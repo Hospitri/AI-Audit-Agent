@@ -1,115 +1,67 @@
-const cheerio = require('cheerio');
 const puppeteer = require('puppeteer');
+const cheerio = require('cheerio');
 
-async function fetchHtml(url) {
-    const resp = await fetch(url, {
-        headers: { 'User-Agent': 'HospitriAuditBot/1.0' },
-    });
-    const text = await resp.text();
-    return text;
-}
-
-async function renderWithPuppeteer(url) {
+async function scrapePage(url) {
     const browser = await puppeteer.launch({ args: ['--no-sandbox'] });
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+
+    await page.evaluate(async () => {
+        await new Promise(resolve => {
+            let totalHeight = 0;
+            const distance = 400;
+            const timer = setInterval(() => {
+                window.scrollBy(0, distance);
+                totalHeight += distance;
+                if (totalHeight >= document.body.scrollHeight) {
+                    clearInterval(timer);
+                    resolve();
+                }
+            }, 200);
+        });
+    });
+
     const html = await page.content();
     await browser.close();
-    return html;
-}
 
-async function scrapePage(url) {
-    let html = await fetchHtml(url);
-    let $ = cheerio.load(html);
+    const $ = cheerio.load(html);
+    $('script, style, noscript').remove();
 
-    // If page seems JS-rendered (title empty or body small), fallback to Puppeteer
-    const title = $('title').text().trim();
-    if (!title || html.length < 2000) {
-        console.log('Falling back to Puppeteer');
-        html = await renderWithPuppeteer(url);
-        $ = cheerio.load(html);
-    }
+    const selectors = [
+        'title',
+        'meta[property="og:title"]',
+        'meta[name="description"]',
+        'meta[property="og:description"]',
+        '[data-section-id="DESCRIPTION_DEFAULT"]',
+        '[data-section-id="AMENITIES_DEFAULT"]',
+        '[data-section-id="POLICIES_DEFAULT"]',
+        '[data-section-id="REVIEWS_DEFAULT"]',
+        '[data-testid="book-it-default"]', // precio
+        '[data-section-id*="HOST_PROFILE_DEFAULT"]',
+    ];
 
-    // Extract basics
-    const titleText =
-        $('meta[property="og:title"]').attr('content') || $('title').text();
-    const desc =
-        $('meta[name="description"]').attr('content') ||
-        $('meta[property="og:description"]').attr('content') ||
-        '';
+    let extracted = '';
+
+    selectors.forEach(sel => {
+        const el = $(sel);
+        if (el.length) {
+            const text = el.text().trim() || el.attr('content');
+            if (text) {
+                extracted += `\n[${sel}]\n${text}`;
+            }
+        }
+    });
+
     const images = [];
-    // OG image first
-    const og = $('meta[property="og:image"]').attr('content');
-    if (og) images.push(og);
     $('img').each((i, el) => {
         const src = $(el).attr('src') || $(el).attr('data-src');
-        if (src && images.indexOf(src) === -1) images.push(src);
+        if (src && !images.includes(src)) images.push(src);
     });
+    if (images.length) {
+        extracted += `\n[images]\n${images.slice(0, 20).join('\n')}`;
+    }
 
-    const amenities = [];
-    $('*').each((i, el) => {
-        const text = $(el).text().trim();
-        if (
-            /amenities|características|facilities|services/i.test(text) &&
-            $(el).find('li').length
-        ) {
-            $(el)
-                .find('li')
-                .each((_, li) => {
-                    const amenity = $(li).text().trim();
-                    if (amenity) amenities.push(amenity);
-                });
-        }
-    });
-
-    const reviews = [];
-    $('[class*="review"], [class*="rating"], [class*="score"]').each(
-        (_, el) => {
-            const reviewText = $(el).text().trim();
-            if (reviewText && reviews.indexOf(reviewText) === -1)
-                reviews.push(reviewText);
-        }
-    );
-
-    let pricing = null;
-    const priceCandidates = [];
-    $('body *').each((_, el) => {
-        const t = $(el).text().trim();
-        if (/\$\d+|USD|€\d+|price/i.test(t)) {
-            priceCandidates.push(t);
-        }
-    });
-    if (priceCandidates.length) pricing = priceCandidates[0];
-
-    const policies = [];
-    $('*').each((_, el) => {
-        const text = $(el).text().trim();
-        if (
-            /policy|política|terms|fees|charges/i.test(text) &&
-            text.length < 500
-        ) {
-            policies.push(text);
-        }
-    });
-
-    let responseSpeed = null;
-    $('*').each((_, el) => {
-        const text = $(el).text().trim();
-        if (/responds within|tiempo de respuesta/i.test(text)) {
-            responseSpeed = text;
-        }
-    });
-
-    return {
-        title: titleText,
-        description: desc,
-        images: images.slice(0, 50),
-        amenities_consistency: amenities,
-        review_sentiment: reviews,
-        pricing,
-        policies_fees: policies,
-        response_speed: responseSpeed,
-    };
+    return extracted.replace(/\s+/g, ' ').trim();
 }
 
 module.exports = { scrapePage };

@@ -2,7 +2,7 @@ const OpenAI = require('openai');
 require('dotenv').config();
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-async function generateAudit({ scraped }) {
+async function generateAudit({ html }) {
     const prompt = `You are “Hospitri AI Listing Auditor.”
     Goal: turn one public OTA listing (Airbnb / Booking / VRBO) into a clear JSON audit.
     General rules
@@ -14,16 +14,16 @@ async function generateAudit({ scraped }) {
     Scoring model
     • Provide **numeric scores 0-10** (integers) and a **letter grade** (A=excellent ≥9, B=good 8-8.9, C=fair 7-7.9, D=needs work <7).
     • Weight categories for the overall score:
-      images 18 %, description 15 %, title 12 %, amenities_consistency 12 %,
-      review_sentiment 12 %, pricing 12 %, policies_fees 10 %, response_speed 9 %.
+      images 18 %, description 15 %, title 12 %, amenities 12 %,
+      reviews 12 %, pricing 12 %, policies_fees 10 %, response_speed 9 %.
     • Round overall_score to one decimal place.
 
     Categories (in this order):
     1. title
     2. description
     3. images
-    4. amenities_consistency
-    5. review_sentiment
+    4. amenities
+    5. reviews
     6. pricing
     7. policies_fees
     8. response_speed
@@ -55,25 +55,30 @@ async function generateAudit({ scraped }) {
       ],
       "pro_tip":"…"
     }
-    Here is the scraped listing data.  Produce the audit JSON per instructions above.
-    ${JSON.stringify(scraped)}
-}`;
+    Here is the extracted text from the listing (HTML content reduced to relevant sections).  Produce the audit JSON per instructions above.
+    ${html}`;
 
     const resp = await client.chat.completions.create({
         model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 1000,
+        response_format: { type: 'json_object' },
+        max_tokens: 1500,
     });
 
-    const text = resp.choices[0].message.content;
-
-    try {
-        const json = JSON.parse(text);
-        return json;
-    } catch (e) {
-        // fallback: ask again or wrap in a best-effort parser
-        throw new Error('OpenAI response not valid JSON: ' + e.message);
+    const jsonText = resp.choices[0].message.content;
+    if (!jsonText) {
+        throw new Error('OpenAI response was empty');
     }
+
+    let json;
+    try {
+        json = JSON.parse(jsonText);
+    } catch (err) {
+        console.error('Error parsing JSON from model:', jsonText);
+        throw err;
+    }
+
+    return json;
 }
 
 module.exports = { generateAudit };
