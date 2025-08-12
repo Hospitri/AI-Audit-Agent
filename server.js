@@ -1,3 +1,8 @@
+try {
+    const { File } = require('undici');
+    if (!globalThis.File) globalThis.File = File;
+} catch (_) {}
+
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
