@@ -74,7 +74,7 @@ async function generateAudit({ html }) {
         model: 'gpt-5-nano',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
-        max_tokens: 1500,
+        max_completion_tokens: 1500,
     });
 
     console.log('Used tokens:', {
