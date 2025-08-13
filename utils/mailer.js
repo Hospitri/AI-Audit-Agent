@@ -1,45 +1,37 @@
+// utils/mailer.js
 const axios = require('axios');
 const fs = require('fs').promises;
 const path = require('path');
 
-function htmlToText(html) {
-    if (!html) return '';
-    return html
-        .replace(/<style[\s\S]*?<\/style>/gi, '')
-        .replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
 async function sendEmailWithAttachment({
     to,
-    subject,
-    html,
-    text,
+    templateId,
+    variables = {},
     attachmentPath,
 }) {
     const apiKey = process.env.MAILERSEND_API_KEY;
     const fromEmail = process.env.MAILERSEND_FROM;
-
     if (!apiKey) throw new Error('MAILERSEND_API_KEY missing');
     if (!fromEmail) throw new Error('MAILERSEND_FROM missing');
 
-    let attachments = [];
-    if (attachmentPath) {
-        const fileBuffer = await fs.readFile(attachmentPath);
-        const base64 = fileBuffer.toString('base64');
-        const filename = path.basename(attachmentPath);
-        attachments.push({ content: base64, filename });
-    }
+    const file = await fs.readFile(attachmentPath);
+    const base64 = file.toString('base64');
+    const filename = path.basename(attachmentPath);
 
     const payload = {
         from: { email: fromEmail },
         to: [{ email: to }],
-        subject,
-        html: html || undefined,
-        text: text ?? htmlToText(html || ''),
-        attachments: attachments.length ? attachments : undefined,
+        template_id: templateId,
+        variables: [
+            {
+                email: to,
+                substitutions: Object.entries(variables).map(([k, v]) => ({
+                    var: k,
+                    value: String(v ?? ''),
+                })),
+            },
+        ],
+        attachments: [{ content: base64, filename }],
     };
 
     await axios.post('https://api.mailersend.com/v1/email', payload, {

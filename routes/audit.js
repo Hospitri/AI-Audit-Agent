@@ -64,6 +64,12 @@ router.post('/', async (req, res) => {
     if (!isValidUrl(url))
         return res.status(400).json({ error: 'invalid or unsupported URL' });
 
+    let firstName = '';
+    const nameSplit = name.split(' ');
+    if (nameSplit.length > 1) {
+        firstName = nameSplit[0];
+    }
+
     const key = getIdempotencyKey(req);
     if (seen.has(key)) {
         return res.status(202).json({ ok: true, duplicate: true });
@@ -97,14 +103,13 @@ router.post('/', async (req, res) => {
 
             const pdfPath = await renderPdfFromHtml(str);
 
-            const emailHtml = `<p>Hi ${name},</p><p>Attached is your audit for <b>${url}</b>.</p>`;
-            const emailText = `Hi ${name},\nAttached is your audit for ${url}.`;
-
             await sendEmailWithAttachment({
                 to: email,
-                subject: `Hospitri — Audit for ${url}`,
-                html: emailHtml,
-                text: emailText,
+                templateId:
+                    process.env.MAILERSEND_TEMPLATE_AUDIT || 'zr6ke4ned7e4on12',
+                variables: {
+                    name: firstName,
+                },
                 attachmentPath: pdfPath,
             });
 
