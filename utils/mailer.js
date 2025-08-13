@@ -25,7 +25,7 @@ async function sendEmailWithAttachment({ to, subject, text, attachmentPath }) {
         console.log(`Email sent to ${to}, status: ${response.status}`);
     } catch (err) {
         console.error('Error sending email:', err.response?.data || err.message);
-        throw new Error('Email sending failed');
+        throw new Error('Email sending failed', err.message);
     }
 }
 

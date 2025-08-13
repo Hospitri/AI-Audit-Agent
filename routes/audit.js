@@ -51,16 +51,16 @@ router.post('/', async (req, res) => {
 
         const pdfPath = await renderPdfFromHtml(str);
 
-        await sendEmailWithAttachment({
-            to: email,
-            subject: `Hospitri — Audit for ${url}`,
-            text: `<p>Hi ${name},</p><p>Attached is your audit for <b>${url}</b>.</p>`,
-            attachmentPath: pdfPath,
-        });
+        // await sendEmailWithAttachment({
+        //     to: email,
+        //     subject: `Hospitri — Audit for ${url}`,
+        //     text: `<p>Hi ${name},</p><p>Attached is your audit for <b>${url}</b>.</p>`,
+        //     attachmentPath: pdfPath,
+        // });
 
         res.json({
             ok: true,
-            message: 'Audit generated and emailed',
+            pdfPath,
             auditJson,
         });
     } catch (err) {
