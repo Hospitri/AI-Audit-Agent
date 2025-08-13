@@ -23,7 +23,7 @@ async function renderPdfFromHtml(html) {
         path: outPath,
         format: 'A4',
         printBackground: true,
-        margin: { top: '18mm', bottom: '18mm', left: '14mm', right: '14mm' },
+        margin: { top: '12mm', bottom: '12mm', left: '10mm', right: '10mm' },
     });
     await browser.close();
     return outPath;
