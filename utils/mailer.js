@@ -1,32 +1,33 @@
 const axios = require('axios');
-const fs = require('fs');
-const FormData = require('form-data');
+const fs = require('fs').promises;
+const path = require('path');
 
-async function sendEmailWithAttachment({ to, subject, text, attachmentPath }) {
-    try {
-        if (!fs.existsSync(attachmentPath)) {
-            throw new Error(`Attachment not found: ${attachmentPath}`);
-        }
+async function sendEmailWithAttachment({ to, subject, html, attachmentPath }) {
+    const apiKey = process.env.MAILERSEND_API_KEY;
+    const fromEmail = process.env.MAILERSEND_FROM;
 
-        const form = new FormData();
-        form.append('from', process.env.MAILERSEND_FROM);
-        form.append('to', to);
-        form.append('subject', subject);
-        form.append('html', text);
-        form.append('attachments[]', fs.createReadStream(attachmentPath));
+    if (!apiKey) throw new Error('MAILERSEND_API_KEY missing');
+    if (!fromEmail) throw new Error('MAILERSEND_FROM missing');
 
-        const response = await axios.post('https://api.mailersend.com/v1/email', form, {
-            headers: {
-                Authorization: `Bearer ${process.env.MAILERSEND_API_KEY}`,
-                ...form.getHeaders(),
-            },
-        });
+    const fileBuffer = await fs.readFile(attachmentPath);
+    const base64 = fileBuffer.toString('base64');
+    const filename = path.basename(attachmentPath);
 
-        console.log(`Email sent to ${to}, status: ${response.status}`);
-    } catch (err) {
-        console.error('Error sending email:', err.response?.data || err.message);
-        throw new Error('Email sending failed', err.message);
-    }
+    const payload = {
+        from: { email: fromEmail },
+        to: [{ email: to }],
+        subject,
+        html,
+        attachments: [{ content: base64, filename }],
+    };
+
+    await axios.post('https://api.mailersend.com/v1/email', payload, {
+        headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+        },
+        timeout: 20000,
+    });
 }
 
 module.exports = { sendEmailWithAttachment };

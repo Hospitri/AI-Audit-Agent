@@ -36,7 +36,7 @@ async function scrapePage(url) {
         '[data-section-id="AMENITIES_DEFAULT"]',
         '[data-section-id="POLICIES_DEFAULT"]',
         '[data-section-id="REVIEWS_DEFAULT"]',
-        '[data-testid="book-it-default"]', // precio
+        '[data-testid="book-it-default"]',
         '[data-section-id*="HOST_PROFILE_DEFAULT"]',
     ];
 
