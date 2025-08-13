@@ -36,7 +36,14 @@ async function generateAudit({ html }) {
 
     Quick-wins:
     • Generate exactly **three** quick wins.
-    • Each has: action (≤60 chars), effort (Low | Med | High), potential_uplift (“$” for revenue or “⚡” for guest experience).
+    • Each has: 
+      - action (≤60 chars)
+      - effort (Low | Med | High)
+      - potential_uplift_type ("revenue" | "experience")
+      - potential_uplift (symbol meter):
+          - if potential_uplift_type = "revenue" use "$", "$$", or "$$$"
+          - if potential_uplift_type = "experience" use "⚡", "⚡⚡", or "⚡⚡⚡"
+    • Map impact: Low → 1 symbol, Med → 2 symbols, High → 3 symbols.
     • Order by highest impact.
 
     Pro tip:
@@ -50,7 +57,10 @@ async function generateAudit({ html }) {
         …
       },
       "quick_wins":[
-        {"action":"…","effort":"Low","potential_uplift":"$"},
+        {"action":"…","effort":"Low","potential_uplift_type":"revenue","potential_uplift":"$$"},
+        {"action":"…","effort":"High","potential_uplift_type":"experience","potential_uplift":"⚡⚡⚡"},
+        {"action":"…","effort":"Med","potential_uplift_type":"revenue","potential_uplift":"$$"}
+      ],
         …
       ],
       "pro_tip":"…"

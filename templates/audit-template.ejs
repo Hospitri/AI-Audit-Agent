@@ -5,18 +5,23 @@
   <title>Hospitri — Listing Audit</title>
   <style>
     body { font-family: system-ui, Arial, sans-serif; margin: 32px; color: #111; }
-    h1 { margin: 0 0 8px; }
-    .muted { color: #666; }
-    .score { font-size: 42px; font-weight: 700; margin: 12px 0 24px; }
+    h1 { margin: 0 0 4px; font-size: 28px; }
+    .subtitle { color: #444; margin: 0 0 16px; font-size: 16px; }
+    .score { font-size: 40px; font-weight: 700; margin: 12px 0 24px; }
     .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
     .card { border: 1px solid #eee; border-radius: 10px; padding: 14px; }
     .title { font-weight: 600; margin-bottom: 6px; text-transform: capitalize; }
     ul { margin: 8px 0 0 18px; }
+    .muted { color: #666; font-size: 12px; margin-top: 24px; }
   </style>
 </head>
 <body>
   <h1>Hospitri — Listing Audit</h1>
-  <div class="muted"><%= url %></div>
+  <% const listingTitle = (audit && (audit.listing_title || (audit.meta && audit.meta.title))) || ''; %>
+  <% if (listingTitle) { %>
+    <div class="subtitle"><%= listingTitle %></div>
+  <% } %>
+
   <div class="score">Overall: <%= audit.overall_score %></div>
 
   <h2>Category breakdown</h2>
@@ -34,7 +39,12 @@
   <h2>Quick wins</h2>
   <ul>
     <% (audit.quick_wins || []).forEach(q => { %>
-      <li><b><%= q.action %></b> — Effort: <%= q.effort %>, Impact: <%= q.potential_uplift %></li>
+      <li>
+        <b><%= q.action %></b>
+        — Effort: <%= q.effort %>
+        , Impact: <%= q.potential_uplift %>
+        <% if (q.potential_uplift_type) { %> (<%= q.potential_uplift_type %>)<% } %>
+      </li>
     <% }) %>
   </ul>
 

@@ -53,6 +53,8 @@ body{font-family:Arial,sans-serif;margin:32px}pre{white-space:pre-wrap}
 </body></html>`;
 
 router.post('/', async (req, res) => {
+    const submissionId = req.headers['framer-webhook-submission-id'] || '';
+    console.log('Framer submission id:', submissionId);
     const { name, email, phone, url } = req.body || {};
 
     if (!url || !email || !name)
@@ -95,12 +97,17 @@ router.post('/', async (req, res) => {
 
             const pdfPath = await renderPdfFromHtml(str);
 
+            const emailHtml = `<p>Hi ${name},</p><p>Attached is your audit for <b>${url}</b>.</p>`;
+            const emailText = `Hi ${name},\nAttached is your audit for ${url}.`;
+
             await sendEmailWithAttachment({
                 to: email,
                 subject: `Hospitri — Audit for ${url}`,
-                html: `<p>Hi ${name},</p><p>Attached is your audit for <b>${url}</b>.</p>`,
+                html: emailHtml,
+                text: emailText,
                 attachmentPath: pdfPath,
             });
+
             console.log('Audit sent OK', { email, url });
         } catch (err) {
             console.error('Background processing failed:', err);
