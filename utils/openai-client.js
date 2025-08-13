@@ -71,10 +71,10 @@ async function generateAudit({ html }) {
     ${html}`;
 
     const resp = await client.chat.completions.create({
-        model: 'gpt-5-nano',
+        model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
         response_format: { type: 'json_object' },
-        max_completion_tokens: 1500,
+        max_tokens: 1500,
     });
 
     console.log('Used tokens:', {
