@@ -49,6 +49,8 @@ async function generateAudit({ html }) {
     Pro tip:
     • One upbeat paragraph ≤60 words.
 
+    Also return listing_title (string) if you can infer the property’s name from the text.
+
     Output schema:
     {
       "overall_score": 8.4,
