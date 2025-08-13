@@ -1,5 +1,7 @@
 const puppeteer = require('puppeteer');
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
 function hostOf(url) {
     try {
         return new URL(url).hostname;
@@ -19,7 +21,7 @@ async function gotoWithRetries(page, url, tries = 2) {
             return;
         } catch (e) {
             lastErr = e;
-            await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+            await sleep(1000 * (i + 1));
         }
     }
     throw lastErr;
@@ -40,11 +42,26 @@ async function maybeAcceptCookies(page) {
             const btn = await page.$(sel);
             if (btn) {
                 await btn.click({ delay: 50 });
-                await page.waitForTimeout(500);
-                break;
+                await sleep(500);
+                return;
             }
         } catch {}
     }
+
+    try {
+        await page.evaluate(() => {
+            const buttons = Array.from(
+                document.querySelectorAll(
+                    'button, [role="button"], input[type="button"], input[type="submit"]'
+                )
+            );
+            const target = buttons.find(b =>
+                /accept|agree/i.test(b.textContent || b.value || '')
+            );
+            if (target) target.click();
+        });
+        await sleep(500);
+    } catch {}
 }
 
 async function safeScroll(page) {
@@ -52,7 +69,7 @@ async function safeScroll(page) {
         await page.evaluate(async () => {
             await new Promise(resolve => {
                 let total = 0;
-                const step = 500;
+                const step = 600;
                 const id = setInterval(() => {
                     window.scrollBy(0, step);
                     total += step;
@@ -71,19 +88,16 @@ function uniq(arr) {
 }
 
 async function extractCommon(page) {
-    const title = await page.title();
+    const title = await page.title().catch(() => '');
     const ogTitle = await page
-        .$eval('meta[property="og:title"]', el => el.content, { timeout: 0 })
+        .$eval('meta[property="og:title"]', el => el.content)
         .catch(() => '');
     const metaDesc = await page
-        .$eval('meta[name="description"]', el => el.content, { timeout: 0 })
+        .$eval('meta[name="description"]', el => el.content)
         .catch(() => '');
     const ogDesc = await page
-        .$eval('meta[property="og:description"]', el => el.content, {
-            timeout: 0,
-        })
+        .$eval('meta[property="og:description"]', el => el.content)
         .catch(() => '');
-
     const images = await page
         .$$eval('img', imgs =>
             imgs
@@ -96,7 +110,6 @@ async function extractCommon(page) {
                 .filter(Boolean)
         )
         .catch(() => []);
-
     return {
         title: ogTitle || title || '',
         description: ogDesc || metaDesc || '',
@@ -104,6 +117,7 @@ async function extractCommon(page) {
     };
 }
 
+/** Airbnb */
 async function extractAirbnb(page) {
     await page
         .waitForSelector('div[data-section-id="DESCRIPTION_DEFAULT"], h1', {
@@ -122,29 +136,21 @@ async function extractAirbnb(page) {
     ];
     for (const id of sectionIds) {
         const text = await page
-            .$$eval(
-                `[data-section-id="${id}"]`,
-                nodes => nodes.map(n => n.innerText).join('\n'),
-                { timeout: 0 }
+            .$$eval(`[data-section-id="${id}"]`, nodes =>
+                nodes.map(n => n.innerText).join('\n')
             )
             .catch(() => '');
         if (text) blocks.push(`[${id}]\n${text}`);
     }
-
     const price = await page
-        .$$eval(
-            '[data-testid="book-it-default"]',
-            nodes => nodes.map(n => n.innerText).join('\n'),
-            { timeout: 0 }
+        .$$eval('[data-testid="book-it-default"]', nodes =>
+            nodes.map(n => n.innerText).join('\n')
         )
         .catch(() => '');
     if (price) blocks.push(`[PRICE]\n${price}`);
-
     const host = await page
-        .$$eval(
-            '[data-section-id*="HOST_PROFILE_DEFAULT"]',
-            nodes => nodes.map(n => n.innerText).join('\n'),
-            { timeout: 0 }
+        .$$eval('[data-section-id*="HOST_PROFILE_DEFAULT"]', nodes =>
+            nodes.map(n => n.innerText).join('\n')
         )
         .catch(() => '');
     if (host) blocks.push(`[HOST]\n${host}`);
@@ -157,6 +163,7 @@ async function extractAirbnb(page) {
     };
 }
 
+/** VRBO */
 async function extractVrbo(page) {
     await page
         .waitForSelector('h1[data-stid="content-h1"], h1', { timeout: 8000 })
@@ -192,9 +199,7 @@ async function extractVrbo(page) {
 
     for (const s of sections) {
         const text = await page
-            .$$eval(s.sel, nodes => nodes.map(n => n.innerText).join('\n'), {
-                timeout: 0,
-            })
+            .$$eval(s.sel, nodes => nodes.map(n => n.innerText).join('\n'))
             .catch(() => '');
         if (text) blocks.push(`[${s.tag}]\n${text}`);
     }
@@ -207,14 +212,13 @@ async function extractVrbo(page) {
     };
 }
 
+/** Booking.com */
 async function extractBooking(page) {
     await page
         .waitForSelector('h2[data-testid="title"], h1', { timeout: 8000 })
         .catch(() => {});
     const common = await extractCommon(page);
-
     const blocks = [];
-
     const sections = [
         { tag: 'TITLE', sel: 'h2[data-testid="title"], h1' },
         {
@@ -238,16 +242,12 @@ async function extractBooking(page) {
             sel: 'div[data-testid="house-rules-section"], #hotelPoliciesInc',
         },
     ];
-
     for (const s of sections) {
         const text = await page
-            .$$eval(s.sel, nodes => nodes.map(n => n.innerText).join('\n'), {
-                timeout: 0,
-            })
+            .$$eval(s.sel, nodes => nodes.map(n => n.innerText).join('\n'))
             .catch(() => '');
         if (text) blocks.push(`[${s.tag}]\n${text}`);
     }
-
     return {
         ...common,
         extractedText: uniq(blocks.join('\n\n').split('\n'))
@@ -258,13 +258,16 @@ async function extractBooking(page) {
 
 async function scrapePage(url) {
     const host = hostOf(url);
-
     const browser = await puppeteer.launch({
         headless: 'new',
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
             '--disable-blink-features=AutomationControlled',
+            '--no-zygote',
+            '--disable-gpu',
+            '--window-size=1366,900',
         ],
     });
     const page = await browser.newPage();
@@ -272,27 +275,20 @@ async function scrapePage(url) {
     await page.setUserAgent(
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
     );
-    await page.setExtraHTTPHeaders({
-        'Accept-Language': 'en-US,en;q=0.9',
-    });
+    await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' });
     await page.setViewport({ width: 1366, height: 900, deviceScaleFactor: 1 });
 
     await gotoWithRetries(page, url);
-
     await maybeAcceptCookies(page);
-
-    await page.waitForTimeout(1000).catch(() => {});
+    await sleep(1000);
     await safeScroll(page);
-    await page.waitForTimeout(500).catch(() => {});
+    await sleep(500);
 
     let result;
-    if (host.includes('airbnb.')) {
-        result = await extractAirbnb(page);
-    } else if (host.includes('vrbo.')) {
-        result = await extractVrbo(page);
-    } else if (host.includes('booking.')) {
-        result = await extractBooking(page);
-    } else {
+    if (host.includes('airbnb.')) result = await extractAirbnb(page);
+    else if (host.includes('vrbo.')) result = await extractVrbo(page);
+    else if (host.includes('booking.')) result = await extractBooking(page);
+    else {
         const common = await extractCommon(page);
         const bodyText = await page
             .evaluate(() => document.body.innerText)
