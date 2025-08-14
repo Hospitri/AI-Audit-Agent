@@ -10,8 +10,8 @@ const CATEGORY_SCHEMA = {
     properties: {
         numeric: { type: 'integer', minimum: 0, maximum: 10 },
         grade: { type: 'string', enum: ['A', 'B', 'C', 'D'] },
-        what_works: { type: 'string', maxLength: 40 },
-        what_to_improve: { type: 'string', maxLength: 40 },
+        what_works: { type: 'string', maxLength: 60 },
+        what_to_improve: { type: 'string', maxLength: 60 },
     },
 };
 
@@ -94,7 +94,7 @@ const SYSTEM_PROMPT = [
     '',
     'Weights for overall_score (sum 100):',
     'images 18, description 15, title 12, amenities 12, reviews 12, pricing 12, policies_fees 10, response_speed 9.',
-    'Round overall_score to ONE decimal.',
+    'Return overall_score as a number in the range 0.0–10.0 (one decimal). Do not use percentages.',
     '',
     'Style for short texts:',
     '- 2nd person, concise, energetic.',
@@ -137,54 +137,76 @@ function buildInputMessages(html) {
 }
 
 function getParsedJsonFromResponse(resp) {
-    if (resp.output_parsed && typeof resp.output_parsed === 'object') {
+    if (resp.output_parsed && typeof resp.output_parsed === 'object')
         return resp.output_parsed;
-    }
 
     const outputs = resp.output || resp.outputs || [];
-    for (const item of outputs) {
-        const parts = item.content || [];
-        for (const part of parts) {
-            if (part && typeof part === 'object') {
-                if (part.parsed && typeof part.parsed === 'object') {
-                    return part.parsed;
-                }
-                if (
-                    part.type === 'json' &&
-                    part.json &&
-                    typeof part.json === 'object'
-                ) {
-                    return part.json;
-                }
-            }
+    for (const o of outputs) {
+        const parts = o.content || [];
+        for (const p of parts) {
+            if (p?.parsed && typeof p.parsed === 'object') return p.parsed;
+            if (p?.type === 'json' && p.json && typeof p.json === 'object')
+                return p.json;
         }
     }
-
     if (typeof resp.output_text === 'string' && resp.output_text.trim()) {
         return JSON.parse(resp.output_text);
     }
-
-    for (const item of outputs) {
-        const parts = item.content || [];
-        for (const part of parts) {
-            if (part?.type === 'output_text') {
-                const t =
-                    typeof part.text === 'string'
-                        ? part.text
-                        : part.text?.value;
+    for (const o of outputs) {
+        const parts = o.content || [];
+        for (const p of parts) {
+            if (p?.type === 'output_text') {
+                const t = typeof p.text === 'string' ? p.text : p.text?.value;
                 if (t && t.trim()) return JSON.parse(t);
             }
-            if (part?.type === 'text') {
-                const t =
-                    typeof part.text === 'string'
-                        ? part.text
-                        : part.text?.value;
+            if (p?.type === 'text') {
+                const t = typeof p.text === 'string' ? p.text : p.text?.value;
                 if (t && t.trim()) return JSON.parse(t);
             }
         }
     }
-
     return null;
+}
+
+function smartClamp(str, max = 60) {
+    if (!str || typeof str !== 'string') return '';
+    if (str.length <= max) return str;
+    const sliced = str.slice(0, max);
+    const lastSpace = sliced.lastIndexOf(' ');
+    let out = lastSpace > 20 ? sliced.slice(0, lastSpace) : sliced;
+    out = out.replace(/\b(the|a|an|and|or|to|of|in|with)$/i, '').trim();
+    return out;
+}
+
+function normalizeAudit(audit) {
+    const weights = {
+        images: 18,
+        description: 15,
+        title: 12,
+        amenities: 12,
+        reviews: 12,
+        pricing: 12,
+        policies_fees: 10,
+        response_speed: 9,
+    };
+
+    for (const key of Object.keys(weights)) {
+        const c = audit?.category_breakdown?.[key];
+        if (c) {
+            c.what_works = smartClamp(c.what_works, 60);
+            c.what_to_improve = smartClamp(c.what_to_improve, 60);
+            c.numeric = Math.max(0, Math.min(10, parseInt(c.numeric ?? 0, 10)));
+        }
+    }
+
+    let total = 0;
+    for (const [k, w] of Object.entries(weights)) {
+        total += (audit.category_breakdown?.[k]?.numeric || 0) * w;
+    }
+    const normalized = Math.round((total / 100) * 10) / 10;
+    audit.overall_score = normalized;
+
+    return audit;
 }
 
 async function generateAudit({
@@ -204,7 +226,10 @@ async function generateAudit({
                 strict: true,
             },
         },
-        max_output_tokens: 10000,
+        max_output_tokens: parseInt(
+            process.env.OPENAI_MAX_OUTPUT_TOKENS || '1500',
+            10
+        ),
     });
 
     if (resp.usage) {
@@ -217,7 +242,6 @@ async function generateAudit({
     }
 
     let json = getParsedJsonFromResponse(resp);
-
     if (!json) {
         const shape = {
             hasOutputParsed: !!resp.output_parsed,
@@ -238,6 +262,7 @@ async function generateAudit({
         throw new Error('OpenAI response was empty');
     }
 
+    json = normalizeAudit(json);
     return json;
 }
 

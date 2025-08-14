@@ -134,7 +134,9 @@
     </div>
 
     <div class="score-wrap">
-      <div class="score-badge"><%= audit.overall_score %></div>
+      <div class="score-badge">
+        <%= Number(audit.overall_score || 0).toFixed(1) %>
+      </div>
       <div class="score-label">Overall score</div>
     </div>
 
