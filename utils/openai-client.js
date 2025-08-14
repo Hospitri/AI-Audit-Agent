@@ -149,7 +149,6 @@ async function generateAudit({
     const resp = await client.responses.create({
         model,
         input,
-        temperature: 0.2,
         text: {
             format: {
                 type: 'json_schema',
