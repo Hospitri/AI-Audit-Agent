@@ -226,10 +226,7 @@ async function generateAudit({
                 strict: true,
             },
         },
-        max_output_tokens: parseInt(
-            process.env.OPENAI_MAX_OUTPUT_TOKENS || '1500',
-            10
-        ),
+        max_output_tokens: 10000,
     });
 
     if (resp.usage) {
