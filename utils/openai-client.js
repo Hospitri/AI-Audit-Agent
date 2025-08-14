@@ -115,7 +115,6 @@ function buildInputMessages(html) {
     if (!html || typeof html !== 'string') {
         throw new Error('generateAudit() requires a non-empty HTML string');
     }
-
     const safeHtml =
         html.length > MAX_INPUT_CHARS ? html.slice(0, MAX_INPUT_CHARS) : html;
 
@@ -137,9 +136,39 @@ function buildInputMessages(html) {
     ];
 }
 
-/**
- * Generates audit JSON with Responses API + json_schema
- */
+function extractOutputText(resp) {
+    if (typeof resp.output_text === 'string' && resp.output_text.trim()) {
+        return resp.output_text;
+    }
+
+    const outputs = resp.output || resp.outputs || [];
+    for (const item of outputs) {
+        const parts = item.content || [];
+        for (const part of parts) {
+            if (part?.type === 'output_text') {
+                if (typeof part.text === 'string') return part.text;
+                if (part.text && typeof part.text.value === 'string')
+                    return part.text.value;
+            }
+            if (part?.type === 'text') {
+                if (typeof part.text === 'string') return part.text;
+                if (part.text && typeof part.text.value === 'string')
+                    return part.text.value;
+            }
+        }
+    }
+
+    try {
+        const maybe = outputs?.[0]?.content
+            ?.map(p => p?.text?.value || p?.text)
+            .filter(Boolean)
+            .join('\n');
+        if (maybe && maybe.trim()) return maybe;
+    } catch (_) {}
+
+    return null;
+}
+
 async function generateAudit({
     html,
     model = process.env.OPENAI_MODEL || 'gpt-5-nano',
@@ -157,7 +186,7 @@ async function generateAudit({
                 strict: true,
             },
         },
-        max_output_tokens: 900,
+        max_output_tokens: 1500,
     });
 
     if (resp.usage) {
@@ -169,26 +198,20 @@ async function generateAudit({
         });
     }
 
-    const out =
-        resp.output_text ??
-        (() => {
-            try {
-                const c = resp.output?.[0]?.content?.[0];
-                if (c?.type === 'output_text' && typeof c.text === 'string')
-                    return c.text;
-                if (c?.type === 'output_text' && c.text?.value)
-                    return c.text.value;
-            } catch {}
-            return null;
-        })();
-
-    if (!out) throw new Error('OpenAI response was empty');
+    const text = extractOutputText(resp);
+    if (!text || !text.trim()) {
+        console.warn('[OpenAI debug] No output_text found. Shapes:', {
+            hasOutputText: typeof resp.output_text === 'string',
+            outputLen: Array.isArray(resp.output) ? resp.output.length : null,
+        });
+        throw new Error('OpenAI response was empty');
+    }
 
     let json;
     try {
-        json = JSON.parse(out);
+        json = JSON.parse(text);
     } catch (err) {
-        console.error('Failed to parse model JSON:', out);
+        console.error('Failed to parse model JSON:', text);
         throw err;
     }
 
