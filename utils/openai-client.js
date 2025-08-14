@@ -29,7 +29,6 @@ const AUDIT_SCHEMA = {
         properties: {
             listing_title: { type: 'string' },
             overall_score: { type: 'number' },
-
             category_breakdown: {
                 type: 'object',
                 additionalProperties: false,
@@ -54,7 +53,6 @@ const AUDIT_SCHEMA = {
                     response_speed: CATEGORY_SCHEMA,
                 },
             },
-
             quick_wins: {
                 type: 'array',
                 minItems: 3,
@@ -85,7 +83,6 @@ const AUDIT_SCHEMA = {
                     },
                 },
             },
-
             pro_tip: { type: 'string', maxLength: 400 },
         },
     },
@@ -123,7 +120,7 @@ function buildInputMessages(html, usePromptCache = false) {
         role: 'system',
         content: [
             {
-                type: 'text',
+                type: 'input_text',
                 text: SYSTEM_PROMPT,
                 ...(usePromptCache
                     ? { cache_control: { type: 'ephemeral' } }
@@ -134,8 +131,8 @@ function buildInputMessages(html, usePromptCache = false) {
     const userMsg = {
         role: 'user',
         content: [
-            { type: 'text', text: 'Extracted listing text (reduced):' },
-            { type: 'text', text: html },
+            { type: 'input_text', text: 'Extracted listing text (reduced):' },
+            { type: 'input_text', text: html },
         ],
     };
     return [systemMsg, userMsg];
@@ -169,14 +166,26 @@ async function generateAudit({
         });
     }
 
-    const text = resp.output_text;
-    if (!text) throw new Error('OpenAI response was empty');
+    const out =
+        resp.output_text ??
+        (() => {
+            try {
+                const c = resp.output?.[0]?.content?.[0];
+                if (c?.type === 'output_text' && typeof c.text === 'string')
+                    return c.text;
+                if (c?.type === 'output_text' && c.text?.value)
+                    return c.text.value;
+            } catch {}
+            return null;
+        })();
+
+    if (!out) throw new Error('OpenAI response was empty');
 
     let json;
     try {
-        json = JSON.parse(text);
+        json = JSON.parse(out);
     } catch (err) {
-        console.error('Failed to parse model JSON:', text);
+        console.error('Failed to parse model JSON:', out);
         throw err;
     }
 
