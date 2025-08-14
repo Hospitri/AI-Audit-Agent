@@ -1,98 +1,185 @@
 const OpenAI = require('openai');
 require('dotenv').config();
+
 const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-async function generateAudit({ html }) {
-    const prompt = `You are “Hospitri AI Listing Auditor.”
-    Goal: turn one public OTA listing (Airbnb / Booking / VRBO) into a clear JSON audit.
-    General rules
-    • Output **one valid JSON object and nothing else**.
-    • Use concise, energetic language (2nd-person, action-oriented).
-    • Never reveal internal calculations or weighting.
-    • If a field is missing in the input JSON, treat it as null and grade accordingly.
-    
-    Scoring model
-    • Provide **numeric scores 0-10** (integers) and a **letter grade** (A=excellent ≥9, B=good 8-8.9, C=fair 7-7.9, D=needs work <7).
-    • Weight categories for the overall score:
-      images 18 %, description 15 %, title 12 %, amenities 12 %,
-      reviews 12 %, pricing 12 %, policies_fees 10 %, response_speed 9 %.
-    • Round overall_score to one decimal place.
+const CATEGORY_SCHEMA = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['numeric', 'grade', 'what_works', 'what_to_improve'],
+    properties: {
+        numeric: { type: 'integer', minimum: 0, maximum: 10 },
+        grade: { type: 'string', enum: ['A', 'B', 'C', 'D'] },
+        what_works: { type: 'string', maxLength: 40 },
+        what_to_improve: { type: 'string', maxLength: 40 },
+    },
+};
 
-    Categories (in this order):
-    1. title
-    2. description
-    3. images
-    4. amenities
-    5. reviews
-    6. pricing
-    7. policies_fees
-    8. response_speed
+const AUDIT_SCHEMA = {
+    name: 'hospitri_listing_audit',
+    schema: {
+        type: 'object',
+        additionalProperties: false,
+        required: [
+            'overall_score',
+            'category_breakdown',
+            'quick_wins',
+            'pro_tip',
+        ],
+        properties: {
+            listing_title: { type: 'string' },
+            overall_score: { type: 'number' },
 
-    For **each category** return:
-      - numeric  (int 0-10)
-      - grade    (string A-D)
-      - what_works        (≤40 chars)
-      - what_to_improve   (≤40 chars)
+            category_breakdown: {
+                type: 'object',
+                additionalProperties: false,
+                required: [
+                    'title',
+                    'description',
+                    'images',
+                    'amenities',
+                    'reviews',
+                    'pricing',
+                    'policies_fees',
+                    'response_speed',
+                ],
+                properties: {
+                    title: CATEGORY_SCHEMA,
+                    description: CATEGORY_SCHEMA,
+                    images: CATEGORY_SCHEMA,
+                    amenities: CATEGORY_SCHEMA,
+                    reviews: CATEGORY_SCHEMA,
+                    pricing: CATEGORY_SCHEMA,
+                    policies_fees: CATEGORY_SCHEMA,
+                    response_speed: CATEGORY_SCHEMA,
+                },
+            },
 
-    Quick-wins:
-    • Generate exactly **three** quick wins.
-    • Each has: 
-      - action (≤60 chars)
-      - effort (Low | Med | High)
-      - potential_uplift_type ("revenue" | "experience")
-      - potential_uplift (symbol meter):
-          - if potential_uplift_type = "revenue" use "$", "$$", or "$$$"
-          - if potential_uplift_type = "experience" use "⚡", "⚡⚡", or "⚡⚡⚡"
-    • Map impact: Low → 1 symbol, Med → 2 symbols, High → 3 symbols.
-    • Order by highest impact.
+            quick_wins: {
+                type: 'array',
+                minItems: 3,
+                maxItems: 3,
+                items: {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: [
+                        'action',
+                        'effort',
+                        'potential_uplift_type',
+                        'potential_uplift',
+                    ],
+                    properties: {
+                        action: { type: 'string', maxLength: 60 },
+                        effort: {
+                            type: 'string',
+                            enum: ['Low', 'Med', 'High'],
+                        },
+                        potential_uplift_type: {
+                            type: 'string',
+                            enum: ['revenue', 'experience'],
+                        },
+                        potential_uplift: {
+                            type: 'string',
+                            enum: ['$', '$$', '$$$', '⚡', '⚡⚡', '⚡⚡⚡'],
+                        },
+                    },
+                },
+            },
 
-    Pro tip:
-    • One upbeat paragraph ≤60 words.
+            pro_tip: { type: 'string', maxLength: 400 },
+        },
+    },
+    strict: true,
+};
 
-    Also return listing_title (string) if you can infer the property’s name from the text.
+const SYSTEM_PROMPT = [
+    'You are Hospitri’s Listing Auditor.',
+    'Input = extracted text from an OTA listing (Airbnb/Booking/VRBO).',
+    'Output = ONE JSON matching the provided schema (no extra keys, no prose).',
+    '',
+    'Scoring bar:',
+    '- Be strict and realistic: 7 = average, 8 = good, 9–10 = exceptional (rare).',
+    '- Penalize missing/incomplete/generic content.',
+    '',
+    'Weights for overall_score (sum 100):',
+    'images 18, description 15, title 12, amenities 12, reviews 12, pricing 12, policies_fees 10, response_speed 9.',
+    'Round overall_score to ONE decimal.',
+    '',
+    'Style for short texts:',
+    '- 2nd person, concise, energetic.',
+    '- No internal calcs; no weighting details.',
+    '',
+    'Quick wins:',
+    '- Exactly 3 items; map Effort→impact symbols: Low→1, Med→2, High→3.',
+    '- If potential_uplift_type = revenue, use $, $$, $$$.',
+    '- If … = experience, use ⚡, ⚡⚡, ⚡⚡⚡.',
+    '- Order by highest impact.',
+    '',
+    'If you can infer a listing title, set listing_title.',
+].join('\n');
 
-    Output schema:
-    {
-      "overall_score": 8.4,
-      "category_breakdown": {
-        "title": { "numeric":8, "grade":"B", "what_works":"…", "what_to_improve":"…" },
-        …
-      },
-      "quick_wins":[
-        {"action":"…","effort":"Low","potential_uplift_type":"revenue","potential_uplift":"$$"},
-        {"action":"…","effort":"High","potential_uplift_type":"experience","potential_uplift":"⚡⚡⚡"},
-        {"action":"…","effort":"Med","potential_uplift_type":"revenue","potential_uplift":"$$"}
-      ],
-        …
-      ],
-      "pro_tip":"…"
-    }
-    Here is the extracted text from the listing (HTML content reduced to relevant sections).  Produce the audit JSON per instructions above.
-    ${html}`;
+function buildInputMessages(html, usePromptCache = false) {
+    const systemChunk = {
+        role: 'system',
+        content: [
+            {
+                type: 'text',
+                text: SYSTEM_PROMPT,
+                ...(usePromptCache
+                    ? { cache_control: { type: 'ephemeral' } }
+                    : {}),
+            },
+        ],
+    };
 
-    const resp = await client.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        response_format: { type: 'json_object' },
-        max_tokens: 1500,
+    const userChunk = {
+        role: 'user',
+        content: [
+            { type: 'text', text: 'Extracted listing text (reduced):' },
+            { type: 'text', text: html },
+        ],
+    };
+
+    return [systemChunk, userChunk];
+}
+
+/**
+ * Genera el audit JSON a partir del texto extraído (ya reducido)
+ * @param {{ html: string, model?: string }} param0
+ */
+async function generateAudit({
+    html,
+    model = process.env.OPENAI_MODEL || 'gpt-5-nano',
+}) {
+    const usePromptCache = process.env.OPENAI_PROMPT_CACHE === '1';
+
+    const messages = buildInputMessages(html, usePromptCache);
+
+    const resp = await client.responses.create({
+        model,
+        input: messages,
+        temperature: 0.2,
+        response_format: { type: 'json_schema', json_schema: AUDIT_SCHEMA },
+        max_output_tokens: 900,
     });
 
-    console.log('Used tokens:', {
-        prompt_tokens: resp.usage.prompt_tokens,
-        completion_tokens: resp.usage.completion_tokens,
-        total_tokens: resp.usage.total_tokens,
-    });
-
-    const jsonText = resp.choices[0].message.content;
-    if (!jsonText) {
-        throw new Error('OpenAI response was empty');
+    if (resp.usage) {
+        console.log('[OpenAI usage]', {
+            model: resp.model,
+            input_tokens: resp.usage.input_tokens,
+            output_tokens: resp.usage.output_tokens,
+            total_tokens: resp.usage.total_tokens,
+        });
     }
+
+    const text = resp.output_text;
+    if (!text) throw new Error('OpenAI response was empty');
 
     let json;
     try {
-        json = JSON.parse(jsonText);
+        json = JSON.parse(text);
     } catch (err) {
-        console.error('Error parsing JSON from model:', jsonText);
+        console.error('Failed to parse model JSON:', text);
         throw err;
     }
 
