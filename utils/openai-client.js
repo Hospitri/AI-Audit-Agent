@@ -15,78 +15,66 @@ const CATEGORY_SCHEMA = {
     },
 };
 
-const AUDIT_SCHEMA = {
-    name: 'hospitri_listing_audit',
-    schema: {
-        type: 'object',
-        additionalProperties: false,
-        required: [
-            'overall_score',
-            'category_breakdown',
-            'quick_wins',
-            'pro_tip',
-        ],
-        properties: {
-            listing_title: { type: 'string' },
-            overall_score: { type: 'number' },
-            category_breakdown: {
+const AUDIT_JSON_SCHEMA = {
+    type: 'object',
+    additionalProperties: false,
+    required: ['overall_score', 'category_breakdown', 'quick_wins', 'pro_tip'],
+    properties: {
+        listing_title: { type: 'string' },
+        overall_score: { type: 'number' },
+        category_breakdown: {
+            type: 'object',
+            additionalProperties: false,
+            required: [
+                'title',
+                'description',
+                'images',
+                'amenities',
+                'reviews',
+                'pricing',
+                'policies_fees',
+                'response_speed',
+            ],
+            properties: {
+                title: CATEGORY_SCHEMA,
+                description: CATEGORY_SCHEMA,
+                images: CATEGORY_SCHEMA,
+                amenities: CATEGORY_SCHEMA,
+                reviews: CATEGORY_SCHEMA,
+                pricing: CATEGORY_SCHEMA,
+                policies_fees: CATEGORY_SCHEMA,
+                response_speed: CATEGORY_SCHEMA,
+            },
+        },
+        quick_wins: {
+            type: 'array',
+            minItems: 3,
+            maxItems: 3,
+            items: {
                 type: 'object',
                 additionalProperties: false,
                 required: [
-                    'title',
-                    'description',
-                    'images',
-                    'amenities',
-                    'reviews',
-                    'pricing',
-                    'policies_fees',
-                    'response_speed',
+                    'action',
+                    'effort',
+                    'potential_uplift_type',
+                    'potential_uplift',
                 ],
                 properties: {
-                    title: CATEGORY_SCHEMA,
-                    description: CATEGORY_SCHEMA,
-                    images: CATEGORY_SCHEMA,
-                    amenities: CATEGORY_SCHEMA,
-                    reviews: CATEGORY_SCHEMA,
-                    pricing: CATEGORY_SCHEMA,
-                    policies_fees: CATEGORY_SCHEMA,
-                    response_speed: CATEGORY_SCHEMA,
-                },
-            },
-            quick_wins: {
-                type: 'array',
-                minItems: 3,
-                maxItems: 3,
-                items: {
-                    type: 'object',
-                    additionalProperties: false,
-                    required: [
-                        'action',
-                        'effort',
-                        'potential_uplift_type',
-                        'potential_uplift',
-                    ],
-                    properties: {
-                        action: { type: 'string', maxLength: 60 },
-                        effort: {
-                            type: 'string',
-                            enum: ['Low', 'Med', 'High'],
-                        },
-                        potential_uplift_type: {
-                            type: 'string',
-                            enum: ['revenue', 'experience'],
-                        },
-                        potential_uplift: {
-                            type: 'string',
-                            enum: ['$', '$$', '$$$', '⚡', '⚡⚡', '⚡⚡⚡'],
-                        },
+                    action: { type: 'string', maxLength: 60 },
+                    effort: { type: 'string', enum: ['Low', 'Med', 'High'] },
+                    potential_uplift_type: {
+                        type: 'string',
+                        enum: ['revenue', 'experience'],
+                    },
+                    potential_uplift: {
+                        type: 'string',
+                        enum: ['$', '$$', '$$$', '⚡', '⚡⚡', '⚡⚡⚡'],
                     },
                 },
             },
-            pro_tip: { type: 'string', maxLength: 400 },
         },
+        pro_tip: { type: 'string', maxLength: 400 },
     },
-    strict: true,
 };
 
 const SYSTEM_PROMPT = [
@@ -126,12 +114,7 @@ function buildInputMessages(html) {
     return [
         {
             role: 'system',
-            content: [
-                {
-                    type: 'input_text',
-                    text: SYSTEM_PROMPT,
-                },
-            ],
+            content: [{ type: 'input_text', text: SYSTEM_PROMPT }],
         },
         {
             role: 'user',
@@ -160,7 +143,14 @@ async function generateAudit({
         model,
         input: messages,
         temperature: 0.2,
-        text: { format: { type: 'json_schema', json_schema: AUDIT_SCHEMA } },
+        text: {
+            format: {
+                type: 'json_schema',
+                name: 'hospitri_listing_audit',
+                schema: AUDIT_JSON_SCHEMA,
+                strict: true,
+            },
+        },
         max_output_tokens: 900,
     });
 
