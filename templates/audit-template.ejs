@@ -24,17 +24,16 @@
       margin: 0; padding: 20px;
       background: #fff; color: var(--ink);
       font-family: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-      font-size: 13.5px; /* compacto para 1 página */
+      font-size: 13.5px;
       line-height: 1.35;
     }
     .sheet {
-      max-width: 740px; /* más angosto que antes */
+      max-width: 740px;
       margin: 0 auto;
       background: var(--panel);
       border: 2px solid var(--border);
       border-radius: 16px;
       padding: 20px 22px 18px;
-      /* mini “zoom out” manteniendo proporciones */
       transform: scale(0.95);
       transform-origin: top center;
     }
@@ -46,7 +45,7 @@
     }
     .wordmark {
       display: block;
-      height: 20px; /* compacto */
+      height: 20px;
       margin: 0 auto 6px auto;
     }
     .kicker {
@@ -116,7 +115,6 @@
       font-size: 11.5px;
     }
 
-    /* Evitar saltos raros en tarjeta */
     .card, .wins, .legend { page-break-inside: avoid; }
   </style>
 </head>

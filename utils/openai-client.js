@@ -119,7 +119,7 @@ const SYSTEM_PROMPT = [
 ].join('\n');
 
 function buildInputMessages(html, usePromptCache = false) {
-    const systemChunk = {
+    const systemMsg = {
         role: 'system',
         content: [
             {
@@ -131,20 +131,18 @@ function buildInputMessages(html, usePromptCache = false) {
             },
         ],
     };
-
-    const userChunk = {
+    const userMsg = {
         role: 'user',
         content: [
             { type: 'text', text: 'Extracted listing text (reduced):' },
             { type: 'text', text: html },
         ],
     };
-
-    return [systemChunk, userChunk];
+    return [systemMsg, userMsg];
 }
 
 /**
- * Genera el audit JSON a partir del texto extraído (ya reducido)
+ * Generates audit JSON with Responses API + json_schema
  * @param {{ html: string, model?: string }} param0
  */
 async function generateAudit({
@@ -152,14 +150,13 @@ async function generateAudit({
     model = process.env.OPENAI_MODEL || 'gpt-5-nano',
 }) {
     const usePromptCache = process.env.OPENAI_PROMPT_CACHE === '1';
-
     const messages = buildInputMessages(html, usePromptCache);
 
     const resp = await client.responses.create({
         model,
         input: messages,
         temperature: 0.2,
-        response_format: { type: 'json_schema', json_schema: AUDIT_SCHEMA },
+        text: { format: { type: 'json_schema', json_schema: AUDIT_SCHEMA } },
         max_output_tokens: 900,
     });
 
