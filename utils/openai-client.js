@@ -18,7 +18,13 @@ const CATEGORY_SCHEMA = {
 const AUDIT_JSON_SCHEMA = {
     type: 'object',
     additionalProperties: false,
-    required: ['overall_score', 'category_breakdown', 'quick_wins', 'pro_tip'],
+    required: [
+        'listing_title',
+        'overall_score',
+        'category_breakdown',
+        'quick_wins',
+        'pro_tip',
+    ],
     properties: {
         listing_title: { type: 'string' },
         overall_score: { type: 'number' },
@@ -106,10 +112,12 @@ const SYSTEM_PROMPT = [
 const MAX_INPUT_CHARS = 60000;
 
 function buildInputMessages(html) {
+    if (!html || typeof html !== 'string') {
+        throw new Error('generateAudit() requires a non-empty HTML string');
+    }
+
     const safeHtml =
-        typeof html === 'string' && html.length > MAX_INPUT_CHARS
-            ? html.slice(0, MAX_INPUT_CHARS)
-            : html || '';
+        html.length > MAX_INPUT_CHARS ? html.slice(0, MAX_INPUT_CHARS) : html;
 
     return [
         {
@@ -131,17 +139,16 @@ function buildInputMessages(html) {
 
 /**
  * Generates audit JSON with Responses API + json_schema
- * @param {{ html: string, model?: string }} param0
  */
 async function generateAudit({
     html,
     model = process.env.OPENAI_MODEL || 'gpt-5-nano',
 }) {
-    const messages = buildInputMessages(html);
+    const input = buildInputMessages(html);
 
     const resp = await client.responses.create({
         model,
-        input: messages,
+        input,
         temperature: 0.2,
         text: {
             format: {
