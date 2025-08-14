@@ -136,35 +136,53 @@ function buildInputMessages(html) {
     ];
 }
 
-function extractOutputText(resp) {
-    if (typeof resp.output_text === 'string' && resp.output_text.trim()) {
-        return resp.output_text;
+function getParsedJsonFromResponse(resp) {
+    if (resp.output_parsed && typeof resp.output_parsed === 'object') {
+        return resp.output_parsed;
     }
 
     const outputs = resp.output || resp.outputs || [];
     for (const item of outputs) {
         const parts = item.content || [];
         for (const part of parts) {
-            if (part?.type === 'output_text') {
-                if (typeof part.text === 'string') return part.text;
-                if (part.text && typeof part.text.value === 'string')
-                    return part.text.value;
-            }
-            if (part?.type === 'text') {
-                if (typeof part.text === 'string') return part.text;
-                if (part.text && typeof part.text.value === 'string')
-                    return part.text.value;
+            if (part && typeof part === 'object') {
+                if (part.parsed && typeof part.parsed === 'object') {
+                    return part.parsed;
+                }
+                if (
+                    part.type === 'json' &&
+                    part.json &&
+                    typeof part.json === 'object'
+                ) {
+                    return part.json;
+                }
             }
         }
     }
 
-    try {
-        const maybe = outputs?.[0]?.content
-            ?.map(p => p?.text?.value || p?.text)
-            .filter(Boolean)
-            .join('\n');
-        if (maybe && maybe.trim()) return maybe;
-    } catch (_) {}
+    if (typeof resp.output_text === 'string' && resp.output_text.trim()) {
+        return JSON.parse(resp.output_text);
+    }
+
+    for (const item of outputs) {
+        const parts = item.content || [];
+        for (const part of parts) {
+            if (part?.type === 'output_text') {
+                const t =
+                    typeof part.text === 'string'
+                        ? part.text
+                        : part.text?.value;
+                if (t && t.trim()) return JSON.parse(t);
+            }
+            if (part?.type === 'text') {
+                const t =
+                    typeof part.text === 'string'
+                        ? part.text
+                        : part.text?.value;
+                if (t && t.trim()) return JSON.parse(t);
+            }
+        }
+    }
 
     return null;
 }
@@ -186,7 +204,7 @@ async function generateAudit({
                 strict: true,
             },
         },
-        max_output_tokens: 4500,
+        max_output_tokens: 10000,
     });
 
     if (resp.usage) {
@@ -198,21 +216,26 @@ async function generateAudit({
         });
     }
 
-    const text = extractOutputText(resp);
-    if (!text || !text.trim()) {
-        console.warn('[OpenAI debug] No output_text found. Shapes:', {
-            hasOutputText: typeof resp.output_text === 'string',
-            outputLen: Array.isArray(resp.output) ? resp.output.length : null,
-        });
-        throw new Error('OpenAI response was empty');
-    }
+    let json = getParsedJsonFromResponse(resp);
 
-    let json;
-    try {
-        json = JSON.parse(text);
-    } catch (err) {
-        console.error('Failed to parse model JSON:', text);
-        throw err;
+    if (!json) {
+        const shape = {
+            hasOutputParsed: !!resp.output_parsed,
+            outputsCount: Array.isArray(resp.output)
+                ? resp.output.length
+                : Array.isArray(resp.outputs)
+                ? resp.outputs.length
+                : null,
+            firstOutputTypes:
+                Array.isArray(resp.output) && resp.output[0]?.content
+                    ? resp.output[0].content.map(p => p?.type)
+                    : null,
+        };
+        console.warn(
+            '[OpenAI debug] Could not find parsed JSON. Shape:',
+            shape
+        );
+        throw new Error('OpenAI response was empty');
     }
 
     return json;
