@@ -186,7 +186,7 @@ async function generateAudit({
                 strict: true,
             },
         },
-        max_output_tokens: 1500,
+        max_output_tokens: 4500,
     });
 
     if (resp.usage) {
