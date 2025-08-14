@@ -115,27 +115,35 @@ const SYSTEM_PROMPT = [
     'If you can infer a listing title, set listing_title.',
 ].join('\n');
 
-function buildInputMessages(html, usePromptCache = false) {
-    const systemMsg = {
-        role: 'system',
-        content: [
-            {
-                type: 'input_text',
-                text: SYSTEM_PROMPT,
-                ...(usePromptCache
-                    ? { cache_control: { type: 'ephemeral' } }
-                    : {}),
-            },
-        ],
-    };
-    const userMsg = {
-        role: 'user',
-        content: [
-            { type: 'input_text', text: 'Extracted listing text (reduced):' },
-            { type: 'input_text', text: html },
-        ],
-    };
-    return [systemMsg, userMsg];
+const MAX_INPUT_CHARS = 60000;
+
+function buildInputMessages(html) {
+    const safeHtml =
+        typeof html === 'string' && html.length > MAX_INPUT_CHARS
+            ? html.slice(0, MAX_INPUT_CHARS)
+            : html || '';
+
+    return [
+        {
+            role: 'system',
+            content: [
+                {
+                    type: 'input_text',
+                    text: SYSTEM_PROMPT,
+                },
+            ],
+        },
+        {
+            role: 'user',
+            content: [
+                {
+                    type: 'input_text',
+                    text: 'Extracted listing text (reduced):',
+                },
+                { type: 'input_text', text: safeHtml },
+            ],
+        },
+    ];
 }
 
 /**
@@ -146,8 +154,7 @@ async function generateAudit({
     html,
     model = process.env.OPENAI_MODEL || 'gpt-5-nano',
 }) {
-    const usePromptCache = process.env.OPENAI_PROMPT_CACHE === '1';
-    const messages = buildInputMessages(html, usePromptCache);
+    const messages = buildInputMessages(html);
 
     const resp = await client.responses.create({
         model,
