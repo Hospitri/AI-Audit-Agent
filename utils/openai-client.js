@@ -112,7 +112,6 @@ async function generateAudit({ html }) {
         messages,
         response_format: { type: 'json_object' },
         max_tokens: MAX_TOKENS,
-        max_completion_tokens: MAX_TOKENS,
     });
 
     if (resp.usage) {
