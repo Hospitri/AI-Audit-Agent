@@ -1,5 +1,47 @@
 const puppeteer = require('puppeteer');
 
+const MAX_PAYLOAD_CHARS = parseInt(process.env.SCRAPE_MAX_CHARS || '50000', 10);
+
+function pruneTextBlock(text) {
+    if (!text) return '';
+    const junk = [
+        /© 20\d{2}/i,
+        /terms/i,
+        /privacy/i,
+        /sitemap/i,
+        /help center/i,
+        /investors/i,
+        /careers/i,
+        /gift cards/i,
+        /newsroom/i,
+        /english \(us\)/i,
+        /usd/i,
+        /your privacy choices/i,
+        /^sm?t?w?t?f?s?$/i,
+    ];
+
+    const lines = text
+        .split('\n')
+        .map(s => s.trim())
+        .filter(Boolean)
+        .filter(s => s.length > 2)
+        .filter(s => !junk.some(rx => rx.test(s)));
+
+    const seen = new Set();
+    const out = [];
+    for (const l of lines) {
+        if (!seen.has(l)) {
+            seen.add(l);
+            out.push(l);
+        }
+    }
+
+    const joined = out.join('\n').replace(/\s+\n/g, '\n').trim();
+    return joined.length > MAX_PAYLOAD_CHARS
+        ? joined.slice(0, MAX_PAYLOAD_CHARS)
+        : joined;
+}
+
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function hostOf(url) {
@@ -308,19 +350,20 @@ async function scrapePage(url) {
 
     await browser.close();
 
-    const payload = [
-        result.title ? `[TITLE]\n${result.title}` : '',
-        result.description ? `[META_DESCRIPTION]\n${result.description}` : '',
-        result.extractedText ? `[EXTRACTED]\n${result.extractedText}` : '',
-        result.images && result.images.length
-            ? `[IMAGES]\n${result.images.join('\n')}`
-            : '',
-    ]
-        .filter(Boolean)
-        .join('\n\n')
-        .replace(/\s+\n/g, '\n')
-        .trim();
-
+    const payload = pruneTextBlock(
+        [
+            result.title ? `[TITLE]\n${result.title}` : '',
+            result.description
+                ? `[META_DESCRIPTION]\n${result.description}`
+                : '',
+            result.extractedText ? `[EXTRACTED]\n${result.extractedText}` : '',
+            result.images && result.images.length
+                ? `[IMAGES]\n${result.images.join('\n')}`
+                : '',
+        ]
+            .filter(Boolean)
+            .join('\n\n')
+    );
     return payload;
 }
 
