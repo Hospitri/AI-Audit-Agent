@@ -128,14 +128,21 @@ router.post('/', async (req, res) => {
 
                 await addLeadToList(client, leadId, listId);
 
+                const rawScore =
+                    typeof auditJson?.overall_score === 'number'
+                        ? auditJson.overall_score
+                        : null;
+                const safeScore =
+                    rawScore == null
+                        ? null
+                        : Math.round(Math.max(0, Math.min(10, rawScore)) * 10) /
+                          10;
+
                 await insertAudit(client, {
                     lead_id: leadId,
                     listing_url: url,
                     listing_title: auditJson?.listing_title || null,
-                    overall_score:
-                        typeof auditJson?.overall_score === 'number'
-                            ? auditJson.overall_score
-                            : null,
+                    overall_score: safeScore,
                     submission_id: submissionId || null,
                 });
 
