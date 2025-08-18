@@ -1,124 +1,122 @@
 erDiagram
-  CLASSIFICATIONS ||--o{ LEADS : "classification_id"
-  LEAD_STATUSES  ||--o{ LEADS : "lead_status_id"
-  DEMO_STATUSES  ||--o{ LEADS : "demo_status_id"
-  PRIORITIES     ||--o{ LEADS : "priority_id"
-  LISTING_RANGE_BUCKETS ||--o{ LEADS : "range_bucket_id"
-  SOURCES        ||--o{ LEADS : "source_id"
-  VPMS           ||--o{ LEADS : "assigned_vpm_id"
+  CLASSIFICATIONS ||--o{ LEADS : has
+  LEAD_STATUSES  ||--o{ LEADS : has
+  DEMO_STATUSES  ||--o{ LEADS : has
+  PRIORITIES     ||--o{ LEADS : has
+  LISTING_RANGE_BUCKETS ||--o{ LEADS : has
+  SOURCES        ||--o{ LEADS : has
+  VPMS           ||--o{ LEADS : assigned
 
-  LEADS          ||--o{ LEAD_LIST_MEMBERSHIPS : "lead_id"
-  LISTS          ||--o{ LEAD_LIST_MEMBERSHIPS : "list_id"
+  LEADS          ||--o{ LEAD_LIST_MEMBERSHIPS : member_of
+  LISTS          ||--o{ LEAD_LIST_MEMBERSHIPS : contains
 
-  LEADS          ||--o{ LISTINGS : "lead_id"
-  LISTINGS       ||--o{ LISTING_PUBLICATIONS : "listing_id"
+  LEADS          ||--o{ LISTINGS : owns
+  LISTINGS       ||--o{ LISTING_PUBLICATIONS : has
 
-  LEADS          ||--o{ AUDITS : "lead_id"
-  LISTINGS       ||--o{ AUDITS : "listing_id (optional)"
+  LEADS          ||--o{ AUDITS : created
+  LISTINGS       ||--o{ AUDITS : relates_to
 
   CLASSIFICATIONS {
-    uuid id PK
-    text slug UNIQUE
-    text name
+    string id
+    string slug
+    string name
   }
 
   LEAD_STATUSES {
-    uuid id PK
-    text slug UNIQUE
-    text name
+    string id
+    string slug
+    string name
   }
 
   DEMO_STATUSES {
-    uuid id PK
-    text slug UNIQUE
-    text name
+    string id
+    string slug
+    string name
   }
 
   SOURCES {
-    uuid id PK
-    text slug UNIQUE
-    text name
+    string id
+    string slug
+    string name
   }
 
   PRIORITIES {
-    uuid id PK
-    text slug UNIQUE
-    text name
+    string id
+    string slug
+    string name
   }
 
   LISTS {
-    uuid id PK
-    text slug UNIQUE
-    text name
+    string id
+    string slug
+    string name
   }
 
   LISTING_RANGE_BUCKETS {
-    uuid id PK
-    text slug UNIQUE
-    text name
-    int  min_count
-    int  max_count
+    string id
+    string slug
+    string name
+    int    min_count
+    int    max_count
   }
 
   VPMS {
-    uuid id PK
-    text name
-    citext email UNIQUE
-    timestamptz created_at
-    timestamptz updated_at
+    string id
+    string name
+    string email
+    date   created_at
+    date   updated_at
   }
 
   LEADS {
-    uuid id PK
-    timestamptz created_at
-    timestamptz updated_at
-    text  name
-    citext email
-    text  phone         "E.164 or NULL"
-    text  location
-    uuid  classification_id FK
-    uuid  lead_status_id FK
-    uuid  demo_status_id FK
-    uuid  priority_id FK
-    uuid  range_bucket_id FK
-    int   actual_listings
-    uuid  source_id FK
-    text  source_url
-    uuid  assigned_vpm_id FK
+    string id
+    date   created_at
+    date   updated_at
+    string name
+    string email
+    string phone
+    string location
+    string classification_id
+    string lead_status_id
+    string demo_status_id
+    string priority_id
+    string range_bucket_id
+    int    actual_listings
+    string source_id
+    string source_url
+    string assigned_vpm_id
   }
 
   LEAD_LIST_MEMBERSHIPS {
-    uuid  lead_id FK
-    uuid  list_id FK
-    timestamptz joined_at
-    -- PK (lead_id, list_id)
+    string lead_id
+    string list_id
+    date   joined_at
   }
 
   LISTINGS {
-    uuid id PK
-    timestamptz created_at
-    timestamptz updated_at
-    uuid lead_id FK
-    text title
-    text description
+    string id
+    date   created_at
+    date   updated_at
+    string lead_id
+    string title
+    string description
   }
 
   LISTING_PUBLICATIONS {
-    uuid id PK
-    timestamptz created_at
-    uuid listing_id FK
-    text platform
-    text url
-    -- UNIQUE (listing_id, url)
+    string id
+    date   created_at
+    string listing_id
+    string platform
+    string url
   }
 
   AUDITS {
-    uuid id PK
-    timestamptz created_at
-    uuid lead_id FK
-    uuid listing_id FK  "nullable"
-    text listing_url
-    text listing_title
-    numeric overall_score  "NUMERIC(4,1)"
-    text submission_id     "UNIQUE"
+    string id
+    date   created_at
+    string lead_id
+    string listing_id
+    string listing_url
+    string listing_title
+    float  overall_score
+    string submission_id
   }
