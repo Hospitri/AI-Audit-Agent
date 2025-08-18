@@ -1,8 +1,6 @@
--- Extensions
-CREATE EXTENSION IF NOT EXISTS pgcrypto; -- gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS citext;
 
--- Helper: trigger for updated_at
 CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
 BEGIN
   NEW.updated_at = NOW();
@@ -10,9 +8,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- ============================
--- Catalogs
--- ============================
 CREATE TABLE IF NOT EXISTS classifications (
   id   uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   slug text NOT NULL UNIQUE,
@@ -59,16 +54,13 @@ CREATE TABLE IF NOT EXISTS listing_range_buckets (
     CHECK (max_count IS NULL OR min_count <= max_count)
 );
 
--- ============================
--- Main entities
--- ============================
 CREATE TABLE IF NOT EXISTS leads (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   created_at         timestamptz NOT NULL DEFAULT NOW(),
   updated_at         timestamptz NOT NULL DEFAULT NOW(),
   name               text,
   email              citext,
-  phone              text, -- E.164
+  phone              text,
   location           text,
   classification_id  uuid REFERENCES classifications(id) ON UPDATE CASCADE ON DELETE SET NULL,
   lead_status_id     uuid REFERENCES lead_statuses(id)   ON UPDATE CASCADE ON DELETE SET NULL,
@@ -78,7 +70,6 @@ CREATE TABLE IF NOT EXISTS leads (
   actual_listings    int,
   source_id          uuid REFERENCES sources(id)         ON UPDATE CASCADE ON DELETE SET NULL,
   source_url         text,
-
   CONSTRAINT phone_e164_chk CHECK (
     phone IS NULL OR phone ~ '^\+[1-9][0-9]{1,14}$'
   )
@@ -103,16 +94,13 @@ CREATE TABLE IF NOT EXISTS audits (
   lead_id        uuid NOT NULL REFERENCES leads(id) ON UPDATE CASCADE ON DELETE CASCADE,
   listing_url    text NOT NULL,
   listing_title  text,
-  overall_score  numeric(4,1),
-  submission_id  text UNIQUE
+  overall_score  numeric(3,1),
+  submission_id  text UNIQUE,
+  CONSTRAINT overall_score_bounds_chk CHECK (overall_score IS NULL OR (overall_score >= 0 AND overall_score <= 10))
 );
 CREATE INDEX IF NOT EXISTS audits_lead_id_idx ON audits(lead_id);
 CREATE INDEX IF NOT EXISTS audits_created_at_idx ON audits(created_at);
 
--- ============================
--- Seeds
--- ============================
--- CLASSIFICATIONS
 INSERT INTO classifications (slug, name) VALUES
   ('lead','Lead'),
   ('investor','Investor'),
@@ -122,7 +110,6 @@ INSERT INTO classifications (slug, name) VALUES
   ('hospitri-user','Hospitri user')
 ON CONFLICT (slug) DO NOTHING;
 
--- LEAD STATUSES
 INSERT INTO lead_statuses (slug, name) VALUES
   ('new','New'),
   ('follow-up','Follow up'),
@@ -134,14 +121,12 @@ INSERT INTO lead_statuses (slug, name) VALUES
   ('no-good-fit','No Good Fit')
 ON CONFLICT (slug) DO NOTHING;
 
--- DEMO STATUSES
 INSERT INTO demo_statuses (slug, name) VALUES
   ('schedule','Schedule'),
   ('taken','Taken'),
   ('no-show','No show')
 ON CONFLICT (slug) DO NOTHING;
 
--- PRIORITIES
 INSERT INTO priorities (slug, name) VALUES
   ('low','Low'),
   ('medium','Medium'),
@@ -149,7 +134,6 @@ INSERT INTO priorities (slug, name) VALUES
   ('top-notch','Top notch')
 ON CONFLICT (slug) DO NOTHING;
 
--- SOURCES
 INSERT INTO sources (slug, name) VALUES
   ('other','Other'),
   ('referral','Referral'),
@@ -160,7 +144,6 @@ INSERT INTO sources (slug, name) VALUES
   ('manual','Manual')
 ON CONFLICT (slug) DO NOTHING;
 
--- LISTS
 INSERT INTO lists (slug, name) VALUES
   ('hospitri-accounts','Hospitri - Accounts'),
   ('hospitri-leads','Hospitri - Leads'),
@@ -168,7 +151,6 @@ INSERT INTO lists (slug, name) VALUES
   ('axial-leads','Axial - Leads')
 ON CONFLICT (slug) DO NOTHING;
 
--- LISTING_RANGE_BUCKETS
 INSERT INTO listing_range_buckets (slug, name, min_count, max_count) VALUES
   ('1-2','1-2',1,2),
   ('3-5','3-5',3,5),

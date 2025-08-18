@@ -5,10 +5,8 @@ erDiagram
   PRIORITIES      ||--o{ LEADS : "priority_id"
   LISTING_RANGE_BUCKETS ||--o{ LEADS : "range_bucket_id"
   SOURCES         ||--o{ LEADS : "source_id"
-
   LEADS           ||--o{ LEAD_LIST_MEMBERSHIPS : "lead_id"
   LISTS           ||--o{ LEAD_LIST_MEMBERSHIPS : "list_id"
-
   LEADS           ||--o{ AUDITS : "lead_id"
 
   CLASSIFICATIONS {
@@ -16,37 +14,31 @@ erDiagram
     text slug UNIQUE
     text name UNIQUE
   }
-
   LEAD_STATUSES {
     uuid id PK
     text slug UNIQUE
     text name UNIQUE
   }
-
   DEMO_STATUSES {
     uuid id PK
     text slug UNIQUE
     text name UNIQUE
   }
-
   PRIORITIES {
     uuid id PK
     text slug UNIQUE
     text name UNIQUE
   }
-
   SOURCES {
     uuid id PK
     text slug UNIQUE
     text name UNIQUE
   }
-
   LISTS {
     uuid id PK
     text slug UNIQUE
     text name UNIQUE
   }
-
   LISTING_RANGE_BUCKETS {
     uuid id PK
     text slug UNIQUE
@@ -85,6 +77,6 @@ erDiagram
     uuid        lead_id FK
     text        listing_url
     text        listing_title
-    numeric     overall_score  "NUMERIC(4,1)"
+    numeric     overall_score  "NUMERIC(3,1)"
     text        submission_id  "UNIQUE"
   }
