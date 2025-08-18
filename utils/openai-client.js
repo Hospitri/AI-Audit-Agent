@@ -61,7 +61,9 @@ function normalizeAudit(audit) {
     let total = 0;
     for (const [k, w] of Object.entries(weights))
         total += (cb[k]?.numeric || 0) * w;
-    audit.overall_score = Math.round((total / 100) * 10) / 10;
+    const raw = total / 100;
+    const clamped = Math.max(0, Math.min(10, raw));
+    audit.overall_score = Math.round(clamped * 10) / 10;
 
     return audit;
 }
