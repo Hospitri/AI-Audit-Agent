@@ -53,7 +53,6 @@ erDiagram
     text name UNIQUE
     int  min_count
     int  max_count  "NULL = 10+"
-    -- CHECK (max_count IS NULL OR min_count <= max_count)
   }
 
   LEADS {
@@ -72,16 +71,12 @@ erDiagram
     int         actual_listings
     uuid        source_id FK
     text        source_url
-    -- TRIGGER before update: set updated_at = now()
-    -- IDX: (email), (created_at)
   }
 
   LEAD_LIST_MEMBERSHIPS {
     uuid        lead_id FK
     uuid        list_id FK
     timestamptz joined_at
-    -- PK (lead_id, list_id)
-    -- ON CONFLICT DO NOTHING en inserción
   }
 
   AUDITS {
@@ -92,5 +87,4 @@ erDiagram
     text        listing_title
     numeric     overall_score  "NUMERIC(4,1)"
     text        submission_id  "UNIQUE"
-    -- IDX: (lead_id), (created_at)
   }
