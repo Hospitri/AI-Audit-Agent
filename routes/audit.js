@@ -8,6 +8,9 @@ const { scrapePage } = require('../utils/scrape');
 const { generateAudit } = require('../utils/openai-client');
 const { renderPdfFromHtml } = require('../utils/pdf');
 const { sendEmailWithAttachment } = require('../utils/mailer');
+const { pool } = require('../utils/db');
+const { idBySlug } = require('../utils/lookups');
+const { insertLead, addLeadToList, insertAudit } = require('../utils/store');
 
 const seen = new Map();
 const TTL_MS = 10 * 60 * 1000;
@@ -65,10 +68,8 @@ router.post('/', async (req, res) => {
         return res.status(400).json({ error: 'invalid or unsupported URL' });
 
     let firstName = '';
-    const nameSplit = name.split(' ');
-    if (nameSplit.length > 1) {
-        firstName = nameSplit[0];
-    }
+    const nameSplit = (name || '').split(' ');
+    if (nameSplit.length > 1) firstName = nameSplit[0];
 
     const key = getIdempotencyKey(req);
     if (seen.has(key)) {
@@ -94,22 +95,63 @@ router.post('/', async (req, res) => {
                 const tpl = await fs.readFile(templatePath, 'utf8');
                 str = ejs.render(tpl, { audit: auditJson, url, name });
             } catch {
-                str = ejs.render(fallbackTpl, {
-                    audit: auditJson,
-                    url,
-                    name,
-                });
+                str = ejs.render(fallbackTpl, { audit: auditJson, url, name });
             }
-
             const pdfPath = await renderPdfFromHtml(str);
+
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+
+                const classificationId = await idBySlug(
+                    'classifications',
+                    'lead'
+                );
+                const leadStatusId = await idBySlug('lead_statuses', 'new');
+                const sourceId = await idBySlug('sources', 'website-form');
+                const listId = await idBySlug('lists', 'hospitri-leads-audit');
+
+                const leadId = await insertLead(client, {
+                    name,
+                    email,
+                    phone,
+                    location: null,
+                    classification_id: classificationId,
+                    lead_status_id: leadStatusId,
+                    demo_status_id: null,
+                    priority_id: null,
+                    range_bucket_id: null,
+                    actual_listings: null,
+                    source_id: sourceId,
+                    source_url: 'https://hospitri.com/audit-agent#contact',
+                });
+
+                await addLeadToList(client, leadId, listId);
+
+                await insertAudit(client, {
+                    lead_id: leadId,
+                    listing_url: url,
+                    listing_title: auditJson?.listing_title || null,
+                    overall_score:
+                        typeof auditJson?.overall_score === 'number'
+                            ? auditJson.overall_score
+                            : null,
+                    submission_id: submissionId || null,
+                });
+
+                await client.query('COMMIT');
+            } catch (dbErr) {
+                await client.query('ROLLBACK');
+                console.error('DB transaction failed:', dbErr);
+            } finally {
+                client.release();
+            }
 
             await sendEmailWithAttachment({
                 to: email,
                 templateId:
                     process.env.MAILERSEND_TEMPLATE_AUDIT || 'zr6ke4ned7e4on12',
-                variables: {
-                    name: firstName,
-                },
+                variables: { name: firstName },
                 attachmentPath: pdfPath,
             });
 

@@ -1,0 +1,96 @@
+erDiagram
+  CLASSIFICATIONS ||--o{ LEADS : "classification_id"
+  LEAD_STATUSES   ||--o{ LEADS : "lead_status_id"
+  DEMO_STATUSES   ||--o{ LEADS : "demo_status_id"
+  PRIORITIES      ||--o{ LEADS : "priority_id"
+  LISTING_RANGE_BUCKETS ||--o{ LEADS : "range_bucket_id"
+  SOURCES         ||--o{ LEADS : "source_id"
+
+  LEADS           ||--o{ LEAD_LIST_MEMBERSHIPS : "lead_id"
+  LISTS           ||--o{ LEAD_LIST_MEMBERSHIPS : "list_id"
+
+  LEADS           ||--o{ AUDITS : "lead_id"
+
+  CLASSIFICATIONS {
+    uuid id PK
+    text slug UNIQUE
+    text name UNIQUE
+  }
+
+  LEAD_STATUSES {
+    uuid id PK
+    text slug UNIQUE
+    text name UNIQUE
+  }
+
+  DEMO_STATUSES {
+    uuid id PK
+    text slug UNIQUE
+    text name UNIQUE
+  }
+
+  PRIORITIES {
+    uuid id PK
+    text slug UNIQUE
+    text name UNIQUE
+  }
+
+  SOURCES {
+    uuid id PK
+    text slug UNIQUE
+    text name UNIQUE
+  }
+
+  LISTS {
+    uuid id PK
+    text slug UNIQUE
+    text name UNIQUE
+  }
+
+  LISTING_RANGE_BUCKETS {
+    uuid id PK
+    text slug UNIQUE
+    text name UNIQUE
+    int  min_count
+    int  max_count  "NULL = 10+"
+    -- CHECK (max_count IS NULL OR min_count <= max_count)
+  }
+
+  LEADS {
+    uuid        id PK
+    timestamptz created_at
+    timestamptz updated_at
+    text        name
+    citext      email
+    text        phone        "E.164 o NULL"
+    text        location
+    uuid        classification_id FK
+    uuid        lead_status_id FK
+    uuid        demo_status_id FK
+    uuid        priority_id FK
+    uuid        range_bucket_id FK
+    int         actual_listings
+    uuid        source_id FK
+    text        source_url
+    -- TRIGGER before update: set updated_at = now()
+    -- IDX: (email), (created_at)
+  }
+
+  LEAD_LIST_MEMBERSHIPS {
+    uuid        lead_id FK
+    uuid        list_id FK
+    timestamptz joined_at
+    -- PK (lead_id, list_id)
+    -- ON CONFLICT DO NOTHING en inserción
+  }
+
+  AUDITS {
+    uuid        id PK
+    timestamptz created_at
+    uuid        lead_id FK
+    text        listing_url
+    text        listing_title
+    numeric     overall_score  "NUMERIC(4,1)"
+    text        submission_id  "UNIQUE"
+    -- IDX: (lead_id), (created_at)
+  }

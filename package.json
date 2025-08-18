@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node server.js"
+    "start": "node server.js",
+    "migrate": "node scripts/migrate.js"
   },
   "repository": {
     "type": "git",
@@ -31,6 +32,7 @@
     "mermaid": "^11.9.0",
     "node-fetch": "^3.3.2",
     "openai": "^5.12.2",
+    "pg": "^8.16.3",
     "puppeteer": "^24.16.0"
   },
   "engines": {
