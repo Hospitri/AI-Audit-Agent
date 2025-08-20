@@ -68,7 +68,10 @@ router.post('/', async (req, res) => {
         req.headers['x-forwarded-for']?.toString().split(',')[0].trim() ||
         req.socket.remoteAddress;
     const okTs = await verifyTurnstile(tsToken, remoteip);
-    if (!okTs) return res.status(403).json({ error: 'captcha_failed' });
+    if (!okTs) {
+        res.set('X-Turnstile', 'fail');
+        return res.status(403).json({ error: 'captcha_failed' });
+    }
 
     console.log('[turnstile]', {
         ok: okTs,

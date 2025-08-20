@@ -12,5 +12,12 @@ const app = express();
 app.use(bodyParser.json());
 app.use('/api/audit', auditRouter);
 
+process.on('SIGTERM', () =>
+    console.log('[lifecycle] SIGTERM (Railway stopping container)')
+);
+process.on('SIGINT', () => console.log('[lifecycle] SIGINT'));
+process.on('uncaughtException', e => console.error('[uncaughtException]', e));
+process.on('unhandledRejection', e => console.error('[unhandledRejection]', e));
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Audit Agent running on ${PORT}`));
