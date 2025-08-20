@@ -2,69 +2,91 @@
     src="https://challenges.cloudflare.com/turnstile/v0/api.js"
     async
     defer></script>
-
 <div id="cf-ts" style="display: none"></div>
-
 <script>
     (function () {
-        function ready(fn) {
-            document.readyState !== 'loading'
-                ? fn()
-                : document.addEventListener('DOMContentLoaded', fn);
+        function waitFor(fn, tries = 100, every = 100) {
+            return new Promise((resolve, reject) => {
+                let t = 0;
+                const id = setInterval(() => {
+                    try {
+                        const v = fn();
+                        if (v) {
+                            clearInterval(id);
+                            resolve(v);
+                        }
+                    } catch {}
+                    if (++t >= tries) {
+                        clearInterval(id);
+                        resolve(null);
+                    }
+                }, every);
+            });
         }
 
-        function findForm() {
-            let f = document.querySelector('form[action*="/api/audit"]');
+        async function findForm() {
+            let f = document
+                .querySelector('form input[name="email"]')
+                ?.closest('form');
             if (f) return f;
-            const forms = document.getElementsByTagName('form');
-            if (forms && forms.length) return forms[0];
-            return null;
+            f = document.querySelector('form');
+            if (f) return f;
+            return await waitFor(() => document.querySelector('form'));
         }
 
-        ready(function () {
-            let tries = 0;
-            const iv = setInterval(function () {
-                const form = findForm();
-                if (!form) {
-                    if (++tries < 50) return;
-                    clearInterval(iv);
-                    return;
-                }
-                clearInterval(iv);
+        function ensureHiddenInput(form) {
+            let hidden = form.querySelector(
+                'input[name="cf-turnstile-response"]'
+            );
+            if (!hidden) {
+                hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = 'cf-turnstile-response';
+                hidden.style.position = 'absolute';
+                hidden.style.left = '-9999px';
+                form.appendChild(hidden);
+            }
+            return hidden;
+        }
 
-                let hidden = form.querySelector(
-                    'input[name="cf-turnstile-response"]'
-                );
-                if (!hidden) {
-                    hidden = document.createElement('input');
-                    hidden.type = 'hidden';
-                    hidden.name = 'cf-turnstile-response';
-                    form.appendChild(hidden);
-                }
+        function mountInvisible(form, hidden) {
+            if (!window.turnstile)
+                return setTimeout(() => mountInvisible(form, hidden), 100);
+            const widgetId = turnstile.render('#cf-ts', {
+                sitekey: '0x4AAAAAABtV7qHp_xYyfRtC',
+                size: 'invisible',
+                callback: function (token) {
+                    hidden.value = token;
+                    HTMLFormElement.prototype.submit.call(form);
+                },
+            });
 
-                function mount() {
-                    if (!window.turnstile) return setTimeout(mount, 100);
-                    const widgetId = turnstile.render('#cf-ts', {
-                        sitekey: '0x4AAAAAABtV7qHp_xYyfRtC',
-                        size: 'invisible',
-                        callback: function (token) {
-                            hidden.value = token;
-                            form.submit();
-                        },
-                    });
-
-                    form.addEventListener(
-                        'submit',
-                        function (e) {
-                            if (hidden.value) return;
-                            e.preventDefault();
+            form.addEventListener(
+                'submit',
+                function onSubmit(e) {
+                    if (!hidden.value) {
+                        e.preventDefault();
+                        try {
                             turnstile.execute(widgetId);
-                        },
-                        true
-                    );
-                }
-                mount();
-            }, 100);
-        });
+                        } catch {}
+                    }
+                },
+                true
+            );
+        }
+
+        (async function boot() {
+            const form = await findForm();
+            if (!form) {
+                console.warn('[cf-turnstile] form not found');
+                return;
+            }
+
+            const hidden = ensureHiddenInput(form);
+            mountInvisible(form, hidden);
+
+            const mo = new MutationObserver(() => ensureHiddenInput(form));
+            mo.observe(form, { childList: true, subtree: true });
+        })();
     })();
 </script>
