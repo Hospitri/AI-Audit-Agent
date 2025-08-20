@@ -8,47 +8,63 @@
 <script>
     (function () {
         function ready(fn) {
-            document.readyState != 'loading'
+            document.readyState !== 'loading'
                 ? fn()
                 : document.addEventListener('DOMContentLoaded', fn);
         }
+
+        function findForm() {
+            let f = document.querySelector('form[action*="/api/audit"]');
+            if (f) return f;
+            const forms = document.getElementsByTagName('form');
+            if (forms && forms.length) return forms[0];
+            return null;
+        }
+
         ready(function () {
-            const form = document.getElementById('audit-form');
-            if (!form) return;
-
-            let hidden = form.querySelector(
-                'input[name="cf-turnstile-response"]'
-            );
-            if (!hidden) {
-                hidden = document.createElement('input');
-                hidden.type = 'hidden';
-                hidden.name = 'cf-turnstile-response';
-                form.appendChild(hidden);
-            }
-
-            let widgetId = null;
-            function mountTurnstile() {
-                if (widgetId !== null) return;
-                if (!window.turnstile) return setTimeout(mountTurnstile, 100);
-                widgetId = turnstile.render('#cf-ts', {
-                    sitekey: '0x4AAAAAABtV7qHp_xYyfRtC',
-                    size: 'invisible',
-                    callback: function (token) {
-                        hidden.value = token;
-                        form.submit();
-                    },
-                });
-            }
-            mountTurnstile();
-
-            form.addEventListener('submit', function (e) {
-                if (!hidden.value) {
-                    e.preventDefault();
-                    if (window.turnstile && widgetId !== null) {
-                        turnstile.execute(widgetId);
-                    }
+            let tries = 0;
+            const iv = setInterval(function () {
+                const form = findForm();
+                if (!form) {
+                    if (++tries < 50) return;
+                    clearInterval(iv);
+                    return;
                 }
-            });
+                clearInterval(iv);
+
+                let hidden = form.querySelector(
+                    'input[name="cf-turnstile-response"]'
+                );
+                if (!hidden) {
+                    hidden = document.createElement('input');
+                    hidden.type = 'hidden';
+                    hidden.name = 'cf-turnstile-response';
+                    form.appendChild(hidden);
+                }
+
+                function mount() {
+                    if (!window.turnstile) return setTimeout(mount, 100);
+                    const widgetId = turnstile.render('#cf-ts', {
+                        sitekey: '0x4AAAAAABtV7qHp_xYyfRtC',
+                        size: 'invisible',
+                        callback: function (token) {
+                            hidden.value = token;
+                            form.submit();
+                        },
+                    });
+
+                    form.addEventListener(
+                        'submit',
+                        function (e) {
+                            if (hidden.value) return;
+                            e.preventDefault();
+                            turnstile.execute(widgetId);
+                        },
+                        true
+                    );
+                }
+                mount();
+            }, 100);
         });
     })();
 </script>
