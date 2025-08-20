@@ -11,6 +11,12 @@ const { sendEmailWithAttachment } = require('../utils/mailer');
 const { pool } = require('../utils/db');
 const { idBySlug } = require('../utils/lookups');
 const { insertLead, addLeadToList, insertAudit } = require('../utils/store');
+const { ipBurstLimiter, emailDayLimiter } = require('../utils/rateLimit');
+const { verifyTurnstile } = require('../utils/turnstile');
+const { acquire } = require('../utils/concurrency');
+
+router.use(ipBurstLimiter);
+router.use(emailDayLimiter);
 
 const seen = new Map();
 const TTL_MS = 10 * 60 * 1000;
@@ -56,6 +62,14 @@ body{font-family:Arial,sans-serif;margin:32px}pre{white-space:pre-wrap}
 </body></html>`;
 
 router.post('/', async (req, res) => {
+    const tsToken =
+        req.body?.['cf-turnstile-response'] || req.body?.turnstileToken;
+    const remoteip =
+        req.headers['x-forwarded-for']?.toString().split(',')[0].trim() ||
+        req.socket.remoteAddress;
+    const okTs = await verifyTurnstile(tsToken, remoteip);
+    if (!okTs) return res.status(403).json({ error: 'captcha_failed' });
+
     const submissionId = req.headers['framer-webhook-submission-id'] || '';
     console.log('Framer submission id:', submissionId);
     const { name, email, phone, url } = req.body || {};
@@ -80,6 +94,7 @@ router.post('/', async (req, res) => {
     res.status(202).json({ ok: true, received: true });
 
     (async () => {
+        const release = await acquire();
         try {
             const html = await scrapePage(url);
             const auditJson = await generateAudit({ html });
@@ -165,6 +180,8 @@ router.post('/', async (req, res) => {
             console.log('Audit sent OK', { email, url });
         } catch (err) {
             console.error('Background processing failed:', err);
+        } finally {
+            release();
         }
     })();
 });
