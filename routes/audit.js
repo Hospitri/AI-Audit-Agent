@@ -15,7 +15,13 @@ const { ipBurstLimiter, emailDayLimiter } = require('../utils/rateLimit');
 const { verifyTurnstile } = require('../utils/turnstile');
 const { acquire } = require('../utils/concurrency');
 
-router.use(ipBurstLimiter);
+function ipLimiterOrBypass(req, res, next) {
+    const ua = (req.headers['user-agent'] || '').toLowerCase();
+    if (ua.includes('framer/webhooks')) return next();
+    return ipBurstLimiter(req, res, next);
+}
+
+router.use(ipLimiterOrBypass);
 router.use(emailDayLimiter);
 
 const seen = new Map();
