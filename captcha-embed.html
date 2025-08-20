@@ -1,0 +1,54 @@
+<script
+    src="https://challenges.cloudflare.com/turnstile/v0/api.js"
+    async
+    defer></script>
+
+<div id="cf-ts" style="display: none"></div>
+
+<script>
+    (function () {
+        function ready(fn) {
+            document.readyState != 'loading'
+                ? fn()
+                : document.addEventListener('DOMContentLoaded', fn);
+        }
+        ready(function () {
+            const form = document.getElementById('audit-form');
+            if (!form) return;
+
+            let hidden = form.querySelector(
+                'input[name="cf-turnstile-response"]'
+            );
+            if (!hidden) {
+                hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = 'cf-turnstile-response';
+                form.appendChild(hidden);
+            }
+
+            let widgetId = null;
+            function mountTurnstile() {
+                if (widgetId !== null) return;
+                if (!window.turnstile) return setTimeout(mountTurnstile, 100);
+                widgetId = turnstile.render('#cf-ts', {
+                    sitekey: '0x4AAAAAABtV7qHp_xYyfRtC',
+                    size: 'invisible',
+                    callback: function (token) {
+                        hidden.value = token;
+                        form.submit();
+                    },
+                });
+            }
+            mountTurnstile();
+
+            form.addEventListener('submit', function (e) {
+                if (!hidden.value) {
+                    e.preventDefault();
+                    if (window.turnstile && widgetId !== null) {
+                        turnstile.execute(widgetId);
+                    }
+                }
+            });
+        });
+    })();
+</script>
