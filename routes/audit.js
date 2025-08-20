@@ -70,6 +70,13 @@ router.post('/', async (req, res) => {
     const okTs = await verifyTurnstile(tsToken, remoteip);
     if (!okTs) return res.status(403).json({ error: 'captcha_failed' });
 
+    console.log('[turnstile]', {
+        ok: okTs,
+        hasToken: !!tsToken,
+        ip: remoteip,
+        ua: req.headers['user-agent'],
+    });
+
     const submissionId = req.headers['framer-webhook-submission-id'] || '';
     console.log('Framer submission id:', submissionId);
     const { name, email, phone, url } = req.body || {};
@@ -91,6 +98,7 @@ router.post('/', async (req, res) => {
     }
     markSeen(key);
 
+    res.set('X-Turnstile-Verified', '1');
     res.status(202).json({ ok: true, received: true });
 
     (async () => {
