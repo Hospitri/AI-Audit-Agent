@@ -18,8 +18,20 @@ function makeFixedWindowLimiter(max, windowMs, keyFn) {
         res.setHeader('X-RateLimit-Limit', String(max));
         res.setHeader('X-RateLimit-Remaining', String(remaining));
         res.setHeader('X-RateLimit-Reset', String(b.resetAt));
-        if (b.count > max)
+        if (b.count > max) {
+            try {
+                require('./metrics').track('rate_limited', {
+                    email: (req.body?.email || '').toLowerCase(),
+                    url: req.body?.url || null,
+                    props: {
+                        key,
+                        windowMs,
+                        ua: req.headers['user-agent'] || '',
+                    },
+                });
+            } catch {}
             return res.status(429).json({ error: 'rate_limited' });
+        }
         next();
     };
 }

@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "migrate": "node scripts/migrate.js"
+    "migrate": "node scripts/migrate.js",
+    "publish:metrics": "node scripts/publish-metrics.js"
   },
   "repository": {
     "type": "git",
@@ -20,6 +21,7 @@
   },
   "homepage": "https://github.com/Hospitri/AI-Audit-Agent#readme",
   "dependencies": {
+    "@notionhq/client": "^4.0.2",
     "axios": "^1.11.0",
     "cheerio": "^1.1.2",
     "crypto": "^1.0.1",

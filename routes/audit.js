@@ -15,6 +15,7 @@ const { ipBurstLimiter, emailDayLimiter } = require('../utils/rateLimit');
 const { verifyTurnstile } = require('../utils/turnstile');
 const { acquire } = require('../utils/concurrency');
 const { upsertPerson, addToAuditList } = require('../utils/attio');
+const { t } = require('../utils/metrics');
 
 function ipLimiterOrBypass(req, res, next) {
     const ua = (req.headers['user-agent'] || '').toLowerCase();
@@ -74,11 +75,22 @@ router.post('/', async (req, res) => {
     const remoteip =
         req.headers['x-forwarded-for']?.toString().split(',')[0].trim() ||
         req.socket.remoteAddress;
+
+    t('form_received')({
+        submission_id: submissionId || null,
+        email,
+        url,
+        props: { ua: req.headers['user-agent'] || '', ip: remoteip || '' },
+    });
+
     const okTs = await verifyTurnstile(tsToken, remoteip);
     if (!okTs) {
+        t('captcha_fail')({ submission_id: submissionId || null, email, url });
         res.set('X-Turnstile', 'fail');
         return res.status(403).json({ error: 'captcha_failed' });
     }
+
+    t('captcha_ok')({ submission_id: submissionId || null, email, url });
 
     console.log('[turnstile]', {
         ok: okTs,
@@ -180,8 +192,20 @@ router.post('/', async (req, res) => {
                 });
 
                 await client.query('COMMIT');
+                t('db_ok')({
+                    submission_id: submissionId || null,
+                    email,
+                    url,
+                    lead_id: leadId,
+                });
             } catch (dbErr) {
                 await client.query('ROLLBACK');
+                t('db_err')({
+                    submission_id: submissionId || null,
+                    email,
+                    url,
+                    props: { error: dbErr?.message },
+                });
                 console.error('DB transaction failed:', dbErr);
             } finally {
                 client.release();
@@ -190,8 +214,21 @@ router.post('/', async (req, res) => {
             try {
                 const recordId = await upsertPerson({ name, email, phone });
                 if (recordId) await addToAuditList(recordId);
+                t('attio_ok')({
+                    submission_id: submissionId || null,
+                    email,
+                    url,
+                });
                 console.log('[attio] synced', { email });
             } catch (attioErr) {
+                t('attio_err')({
+                    submission_id: submissionId || null,
+                    email,
+                    url,
+                    props: {
+                        error: attioErr?.response?.data || attioErr?.message,
+                    },
+                });
                 console.error(
                     '[attio] sync failed',
                     attioErr?.response?.data || attioErr
@@ -205,9 +242,21 @@ router.post('/', async (req, res) => {
                 variables: { name: firstName },
                 attachmentPath: pdfPath,
             });
+            t('email_ok')({
+                submission_id: submissionId || null,
+                email,
+                url,
+                props: { total_ms: Date.now() - startedAt },
+            });
 
             console.log('Audit sent OK', { email, url });
         } catch (err) {
+            t('pipeline_err')({
+                submission_id: submissionId || null,
+                email,
+                url,
+                props: { error: err?.message },
+            });
             console.error('Background processing failed:', err);
         } finally {
             release();

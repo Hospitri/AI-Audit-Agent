@@ -4,7 +4,7 @@ const path = require('path');
 const { Pool } = require('pg');
 
 const sql = fs.readFileSync(
-    path.resolve(__dirname, '../db/migrations/001_init.sql'),
+    path.resolve(__dirname, '../db/migrations/002_metrics.sql'),
     'utf8'
 );
 
@@ -19,7 +19,7 @@ const pool = new Pool({
 (async () => {
     try {
         await pool.query(sql);
-        console.log('✅ Migration 001_init.sql applied');
+        console.log('✅ Migration applied');
     } catch (err) {
         console.error('❌ Migration failed:', err);
         process.exitCode = 1;
