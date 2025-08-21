@@ -56,7 +56,6 @@ async function main() {
         airbnb: Number(mix.airbnb || 0),
         booking: Number(mix.booking || 0),
         vrbo: Number(mix.vrbo || 0),
-        other: Number(mix.other || 0),
     };
 
     const todayISO = new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z';
