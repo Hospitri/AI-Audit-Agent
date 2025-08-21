@@ -14,6 +14,7 @@ const { insertLead, addLeadToList, insertAudit } = require('../utils/store');
 const { ipBurstLimiter, emailDayLimiter } = require('../utils/rateLimit');
 const { verifyTurnstile } = require('../utils/turnstile');
 const { acquire } = require('../utils/concurrency');
+const { upsertPerson, addToAuditList } = require('../utils/attio');
 
 function ipLimiterOrBypass(req, res, next) {
     const ua = (req.headers['user-agent'] || '').toLowerCase();
@@ -184,6 +185,17 @@ router.post('/', async (req, res) => {
                 console.error('DB transaction failed:', dbErr);
             } finally {
                 client.release();
+            }
+
+            try {
+                const recordId = await upsertPerson({ name, email, phone });
+                if (recordId) await addToAuditList(recordId);
+                console.log('[attio] synced', { email });
+            } catch (attioErr) {
+                console.error(
+                    '[attio] sync failed',
+                    attioErr?.response?.data || attioErr
+                );
             }
 
             await sendEmailWithAttachment({
