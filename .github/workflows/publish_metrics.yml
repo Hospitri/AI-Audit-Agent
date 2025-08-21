@@ -1,0 +1,26 @@
+name: Publish metrics to Notion
+
+on:
+  schedule:
+    - cron: "10 3 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npm ci --omit=dev
+
+      - name: Run metrics publisher
+        run: node scripts/publish-metrics.js
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PGSSLMODE: require
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_METRICS_DB_ID: ${{ secrets.NOTION_METRICS_DB_ID }}
