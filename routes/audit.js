@@ -16,8 +16,6 @@ const { verifyTurnstile } = require('../utils/turnstile');
 const { acquire } = require('../utils/concurrency');
 const { upsertPerson, addToAuditList } = require('../utils/attio');
 const { t } = require('../utils/metrics');
-const tpl = await fs.readFile(templatePath, 'utf8');
-const baseHref = path.resolve(__dirname, '..') + path.sep;
 
 function ipLimiterOrBypass(req, res, next) {
     const ua = (req.headers['user-agent'] || '').toLowerCase();
@@ -140,7 +138,6 @@ router.post('/', async (req, res) => {
 
             const s1 = Date.now();
             const auditJson = await generateAudit({ html });
-            str = ejs.render(tpl, { audit: auditJson, url, name, baseHref });
 
             t('openai_ok')({
                 submission_id: submissionId || null,
@@ -158,7 +155,13 @@ router.post('/', async (req, res) => {
             let str;
             try {
                 const tpl = await fs.readFile(templatePath, 'utf8');
-                str = ejs.render(tpl, { audit: auditJson, url, name });
+                const baseHref = path.resolve(__dirname, '..') + path.sep;
+                str = ejs.render(tpl, {
+                    audit: auditJson,
+                    url,
+                    name,
+                    baseHref,
+                });
             } catch {
                 str = ejs.render(fallbackTpl, {
                     audit: auditJson,
