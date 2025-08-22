@@ -125,9 +125,25 @@ router.post('/', async (req, res) => {
 
     (async () => {
         const release = await acquire();
+        const startedAt = Date.now();
         try {
+            const s0 = Date.now();
             const html = await scrapePage(url);
+            t('scrape_ok')({
+                submission_id: submissionId || null,
+                email,
+                url,
+                props: { ms: Date.now() - s0 },
+            });
+
+            const s1 = Date.now();
             const auditJson = await generateAudit({ html });
+            t('openai_ok')({
+                submission_id: submissionId || null,
+                email,
+                url,
+                props: { ms: Date.now() - s1 },
+            });
 
             const templatePath = path.resolve(
                 __dirname,
@@ -142,7 +158,15 @@ router.post('/', async (req, res) => {
             } catch {
                 str = ejs.render(fallbackTpl, { audit: auditJson, url, name });
             }
+
+            const s2 = Date.now();
             const pdfPath = await renderPdfFromHtml(str);
+            t('pdf_ok')({
+                submission_id: submissionId || null,
+                email,
+                url,
+                props: { ms: Date.now() - s2 },
+            });
 
             const client = await pool.connect();
             try {
