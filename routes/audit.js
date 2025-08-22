@@ -75,6 +75,7 @@ router.post('/', async (req, res) => {
     const remoteip =
         req.headers['x-forwarded-for']?.toString().split(',')[0].trim() ||
         req.socket.remoteAddress;
+    const submissionId = req.headers['framer-webhook-submission-id'] || '';
 
     t('form_received')({
         submission_id: submissionId || null,
@@ -99,7 +100,6 @@ router.post('/', async (req, res) => {
         ua: req.headers['user-agent'],
     });
 
-    const submissionId = req.headers['framer-webhook-submission-id'] || '';
     console.log('Framer submission id:', submissionId);
     const { name, email, phone, url } = req.body || {};
 
