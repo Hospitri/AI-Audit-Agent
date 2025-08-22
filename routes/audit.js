@@ -76,13 +76,14 @@ router.post('/', async (req, res) => {
         req.headers['x-forwarded-for']?.toString().split(',')[0].trim() ||
         req.socket.remoteAddress;
     const submissionId = req.headers['framer-webhook-submission-id'] || '';
+    const { name, email, phone, url } = req.body || {};
 
-    t('form_received')({
-        submission_id: submissionId || null,
-        email,
-        url,
-        props: { ua: req.headers['user-agent'] || '', ip: remoteip || '' },
-    });
+    if (!url || !email || !name)
+        return res.status(400).json({ error: 'name, email and url required' });
+    if (!isValidEmail(email))
+        return res.status(400).json({ error: 'invalid email format' });
+    if (!isValidUrl(url))
+        return res.status(400).json({ error: 'invalid or unsupported URL' });
 
     const okTs = await verifyTurnstile(tsToken, remoteip);
     if (!okTs) {
@@ -90,6 +91,13 @@ router.post('/', async (req, res) => {
         res.set('X-Turnstile', 'fail');
         return res.status(403).json({ error: 'captcha_failed' });
     }
+
+    t('form_received')({
+        submission_id: submissionId || null,
+        email,
+        url,
+        props: { ua: req.headers['user-agent'] || '', ip: remoteip || '' },
+    });
 
     t('captcha_ok')({ submission_id: submissionId || null, email, url });
 
@@ -101,14 +109,6 @@ router.post('/', async (req, res) => {
     });
 
     console.log('Framer submission id:', submissionId);
-    const { name, email, phone, url } = req.body || {};
-
-    if (!url || !email || !name)
-        return res.status(400).json({ error: 'name, email and url required' });
-    if (!isValidEmail(email))
-        return res.status(400).json({ error: 'invalid email format' });
-    if (!isValidUrl(url))
-        return res.status(400).json({ error: 'invalid or unsupported URL' });
 
     let firstName = '';
     const nameSplit = (name || '').split(' ');
