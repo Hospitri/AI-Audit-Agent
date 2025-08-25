@@ -17,12 +17,14 @@ async function renderPdfFromHtml(html) {
         ],
     });
     const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 1 });
     await page.setContent(html, { waitUntil: 'networkidle0' });
     await page.emulateMediaType('screen');
     await page.pdf({
         path: outPath,
         format: 'A4',
         printBackground: true,
+        scale: 0.75,
         margin: { top: '12mm', bottom: '12mm', left: '10mm', right: '10mm' },
     });
     await browser.close();

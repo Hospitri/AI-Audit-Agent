@@ -152,27 +152,22 @@ router.post('/', async (req, res) => {
                 'templates',
                 'audit-template.ejs'
             );
-            let str;
-            try {
-                const tpl = await fs.readFile(templatePath, 'utf8');
-                const baseHref = path.resolve(__dirname, '..') + path.sep;
-                str = ejs.render(tpl, {
-                    audit: auditJson,
-                    url,
-                    name,
-                    baseHref,
-                });
-            } catch {
-                str = ejs.render(fallbackTpl, {
-                    audit: auditJson,
-                    url,
-                    name,
-                    baseHref: '',
-                });
-            }
+
+            const baseHref =
+                path.resolve(__dirname, '..', 'templates') + path.sep;
+
+            const tpl = await fs.readFile(templatePath, 'utf8');
+
+            const htmlStr = ejs.render(tpl, {
+                audit: auditJson,
+                url,
+                name,
+                baseHref,
+            });
 
             const s2 = Date.now();
-            const pdfPath = await renderPdfFromHtml(str);
+            const pdfPath = await renderPdfFromHtml(htmlStr);
+
             t('pdf_ok')({
                 submission_id: submissionId || null,
                 email,
