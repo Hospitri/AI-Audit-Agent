@@ -1,339 +1,147 @@
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Hospitri — Audit 2</title>
+<main class="max-w-[1060px] w-full mx-auto px-6 py-8">
+  <!-- Hero heading -->
+  <header class="mb-6">
+    <div class="flex flex-row justify-between items-center">
+      <h1 class="font-heading text-[40px] md:text-[48px] leading-[50px] text-[var(--text)]">
+        Your Solution for<br />
+        <span class="text-[var(--heading)]">Vacation Rental Management</span>
+      </h1>
+      <img class="h-[28px]" src="assets/hospitri-home-icon.svg" alt="Home" />
+    </div>
+    <p class="mt-3 text-[16px] text-[#666666] max-w-[860px]">
+      Hospitri was created to make property management simple, transparent, and profitable. From booking insights to finances, cleaning schedules to guest communication, everything is managed in one place so you can grow without the hassle.
+    </p>
+  </header>
 
-    <!-- Tailwind CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Inter for body -->
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            borderRadius: { card: "14px" },
-          },
-        },
-      };
-    </script>
+  <!-- Why Us tag -->
+  <div class="mb-3">
+    <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[13px] font-medium border"
+          style="background: var(--accent); border-color: #858585; color: #22473a;">
+      Why Us?
+    </span>
+  </div>
 
-    <style>
-      @font-face {
-        font-family: "Test Tiempos Headline";
-        src: url("font/TestTiemposHeadline-Light.otf") format("opentype");
-        font-weight: 300;
-        font-style: normal;
-        font-display: swap;
-      }
-      @font-face {
-        font-family: "Test Tiempos Headline";
-        src: url("font/TestTiemposHeadline-Regular.otf") format("opentype");
-        font-weight: 400;
-        font-style: normal;
-        font-display: swap;
-      }
-      @font-face {
-        font-family: "Test Tiempos Headline";
-        src: url("font/TestTiemposHeadline-Medium.otf") format("opentype");
-        font-weight: 500;
-        font-style: normal;
-        font-display: swap;
-      }
-      @font-face {
-        font-family: "Test Tiempos Headline";
-        src: url("font/TestTiemposHeadline-Semibold.otf") format("opentype");
-        font-weight: 600;
-        font-style: normal;
-        font-display: swap;
-      }
-      @font-face {
-        font-family: "Test Tiempos Headline";
-        src: url("font/TestTiemposHeadline-Bold.otf") format("opentype");
-        font-weight: 700;
-        font-style: normal;
-        font-display: swap;
-      }
-      /* Italic variants (needed for elements using class `italic`) */
-      @font-face {
-        font-family: "Test Tiempos Headline";
-        src: url("font/TestTiemposHeadline-RegularItalic.otf")
-          format("opentype");
-        font-weight: 400;
-        font-style: italic;
-        font-display: swap;
-      }
-      @font-face {
-        font-family: "Test Tiempos Headline";
-        src: url("font/TestTiemposHeadline-MediumItalic.otf") format("opentype");
-        font-weight: 500;
-        font-style: italic;
-        font-display: swap;
-      }
+  <!-- Why Hospitri -->
+  <section class="mb-6">
+    <h2 class="font-heading text-[34px] text-[var(--text)]">
+      Why <span style="color: var(--brand)">Hospitri</span>?
+    </h2>
+    <p class="text-[15px] text-[#666666] max-w-[860px]">
+      Cut out the middleman and get more value while supporting local hospitality.
+    </p>
 
-      :root {
-        --bg: #f5f5ef;
-        --text: #262626;
-        --muted: #6e7f75;
-        --border: #dce6dd;
-        --card: #ffffff;
-        --heading: #064541;
-        --brand: #064541;
-        --accent: #e1f579;
-        --chip: #e8f6ef;
-        --chip-b: #c9e7da;
-        --panel: #0f3d33; /* dark green */
-        --yellow: #f0f6c2;
-        --yellow-b: #e7edab;
-      }
-      .font-heading {
-        font-family: "Test Tiempos Headline", "Tiempos Headline", ui-serif,
-          Georgia, serif;
-        letter-spacing: -0.01em;
-      }
-      .font-body {
-        font-family: "Inter", ui-sans-serif, system-ui, -apple-system, Segoe UI,
-          Roboto, Helvetica, Arial;
-      }
-      .shadow-card {
-        box-shadow: 0 10px 30px rgba(15, 36, 46, 0.12);
-      }
-    </style>
-  </head>
-  <body class="font-body text-[var(--text)] bg-[var(--bg)]">
-    <main class="max-w-[1060px] w-full mx-auto px-6 py-8">
-      <!-- Hero heading -->
-      <header class="mb-6">
-        <div class="flex flex-row justify-between items-center">
-          <h1
-            class="font-heading text-[40px] md:text-[48px] leading-[50px] text-[var(--text)]"
-          >
-            Your Solution for<br />
-            <span class="text-[var(--heading)]"
-              >Vacation Rental Management</span
-            >
-          </h1>
-          <img class="h-[28px]" src="assets/hospitri-home-icon.svg" alt="" />
+    <div class="two-col gap-4 mt-5" style="grid-template-columns: repeat(3,minmax(0,1fr));">
+      <!-- Feature card -->
+      <article class="avoid-break rounded-card p-5 border shadow-card" style="background:#064541">
+        <div class="flex flex-col items-center gap-6">
+          <img src="assets/dashboard-icon.svg" alt="" />
+          <div>
+            <div class="text-white text-center font-semibold mb-1">All-in-One Dashboard</div>
+            <p class="text-white/80 text-sm text-center">Manage bookings, guests, and finances seamlessly.</p>
+          </div>
         </div>
-        <p class="mt-3 text-[16px] text-[#666666] max-w-[860px]">
-          Hospitri was created to make property management simple, transparent,
-          and profitable. From booking insights to finances, cleaning schedules
-          to guest communication, everything is managed in one place so you can
-          grow without the hassle.
-        </p>
-      </header>
+      </article>
 
-      <!-- Why Us tag -->
-      <div class="mb-3">
-        <span
-          class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[13px] font-medium border"
-          style="
-            background: var(--accent);
-            border-color: #858585;
-            color: #22473a;
-          "
-        >
-          Why Us?
-        </span>
-      </div>
+      <article class="avoid-break rounded-card p-5 border shadow-card" style="background:#064541">
+        <div class="flex flex-col items-center gap-6">
+          <img src="assets/calendar-icon.svg" alt="" />
+          <div>
+            <div class="text-white text-center font-semibold mb-1">Multi-OTA Calendar</div>
+            <p class="text-white/80 text-sm text-center">
+              Manage your listings across Airbnb, Booking.com, Vrbo, and more — all in one place.
+            </p>
+          </div>
+        </div>
+      </article>
 
-      <!-- Why Hospitri -->
-      <section class="mb-6">
-        <h2 class="font-heading text-[34px] text-[var(--text)]">
-          Why <span style="color: var(--brand)">Hospitri</span>?
-        </h2>
-        <p class="text-[15px] text-[#666666] max-w-[860px]">
-          Cut out the middleman and get more value while supporting local
-          hospitality.
-        </p>
+      <article class="avoid-break rounded-card p-5 border shadow-card" style="background:#064541">
+        <div class="flex flex-col items-center gap-6">
+          <img src="assets/comm-icon.svg" alt="" />
+          <div>
+            <div class="text-white text-center font-semibold mb-1">24/7 Communication</div>
+            <p class="text-white/80 text-sm text-center">
+              Experienced virtual property managers to streamline operations and guest satisfaction.
+            </p>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
 
-        <div class="grid md:grid-cols-3 gap-4 mt-5">
-          <!-- Feature card -->
-          <article
-            class="rounded-card p-5 border shadow-card"
-            style="background: #064541"
-          >
-            <div class="flex flex-col items-center gap-6">
-              <img src="assets/dashboard-icon.svg" alt="" />
+  <!-- CTA section -->
+  <section class="mt-10 flex flex-col gap-[60px]">
+    <div class="flex flex-col gap-[12px]">
+      <h2 class="font-heading text-[34px] text-[var(--text)] max-w-[480px] leading-[40px]">
+        Ready to unlock your property's <span style="color: var(--brand)">full potential</span>?
+      </h2>
+      <p class="text-[15px] text-[#666666] max-w-[860px]">
+        Let’s take your audit further. Book a demo and we’ll guide you through your results while showing you
+        how Hospitri’s platform can streamline every part of your hosting experience.
+      </p>
+    </div>
+
+    <!-- Left info card + Right CTA -->
+    <div class="two-col gap-6">
+      <article class="avoid-break rounded-card border bg-[var(--card)] p-[80px]" style="border-color: var(--border)">
+        <div class="flex items-center gap-2 mb-4">
+          <img class="h-[24px]" src="assets/hospitri-logo-green.svg" alt="Hospitri" />
+        </div>
+
+        <a target="_blank"
+           href="https://cal.com/hospitri/hospitri-get-to-know-us-our-services-web"
+           class="inline-flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-[#E1F67A]"
+           style="background: var(--brand)">
+          Get to Know Us &amp; Our Services
+        </a>
+
+        <div class="mt-5">
+          <div class="text-sm font-semibold mb-2">Here’s what we’ll go over:</div>
+          <ul class="space-y-3 text-sm">
+            <li class="flex gap-3">
+              <img class="h-[18px]" src="assets/chevron-circle-right.svg" alt="" />
               <div>
-                <div class="text-white text-center font-semibold mb-1">
-                  All-in-One Dashboard
-                </div>
-                <p class="text-white/80 text-sm text-center">
-                  Manage bookings, guests, and finances seamlessly.
-                </p>
+                <span class="font-semibold">Your Personalized Audit Results</span>
+                - Deep dive into your listing’s performance, optimization opportunities, and revenue potential.
               </div>
-            </div>
-          </article>
-
-          <article
-            class="rounded-card p-5 border shadow-card"
-            style="background: #064541"
-          >
-            <div class="flex flex-col items-center gap-6">
-              <img src="assets/calendar-icon.svg" alt="" />
+            </li>
+            <li class="flex gap-3">
+              <img class="h-[18px]" src="assets/chevron-circle-right.svg" alt="" />
               <div>
-                <div class="text-white text-center font-semibold mb-1">
-                  Multi-OTA Calendar
-                </div>
-                <p class="text-white/80 text-sm text-center">
-                  Manage your listings across Airbnb, Booking.com, Vrbo, and
-                  more — all in one place.
-                </p>
+                <span class="font-semibold">How Hospitri Can Accelerate Your Results</span>
+                - See how our platform and expert team can implement these improvements for you.
               </div>
-            </div>
-          </article>
-
-          <article
-            class="rounded-card p-5 border shadow-card"
-            style="background: #064541"
-          >
-            <div class="flex flex-col items-center gap-6">
-              <img src="assets/comm-icon.svg" alt="" />
+            </li>
+            <li class="flex gap-3">
+              <img class="h-[18px]" src="assets/chevron-circle-right.svg" alt="" />
               <div>
-                <div class="text-white text-center font-semibold mb-1">
-                  24/7 Communication
-                </div>
-                <p class="text-white/80 text-sm text-center">
-                  Experienced virtual property managers to streamline operations
-                  and guest satisfaction.
-                </p>
+                <span class="font-semibold">Your Custom Implementation Plan</span>
+                - Specific next steps to achieve the results identified in your audit.
               </div>
-            </div>
-          </article>
+            </li>
+          </ul>
         </div>
-      </section>
+      </article>
 
-      <!-- CTA section -->
-      <section class="mt-10 flex flex-col gap-[60px]">
-        <div class="flex flex-col gap-[12px]">
-          <h2
-            class="font-heading text-[34px] text-[var(--text)] max-w-[480px] leading-[40px]"
-          >
-            Ready to unlock your property's
-            <span style="color: var(--brand)">full potential</span>?
-          </h2>
-          <p class="text-[15px] text-[#666666] max-w-[860px]">
-            Let’s take your audit further. Book a demo and we’ll guide you
-            through your results while showing you how Hospitri’s platform can
-            streamline every part of your hosting experience.
-          </p>
+      <!-- Right book-a-demo panel -->
+      <aside class="avoid-break rounded-card p-[80px] border shadow-card flex flex-col justify-between" style="background:#064541">
+        <div class="flex flex-col items-center gap-[28px]">
+          <img src="assets/rodrigo-avatar.png" alt="Rodrigo" class="w-[162px] h-[162px] rounded-full object-cover outline outline-[#E1F67A] border-[10px] border-[#064541]" />
+          <h3 class="font-body font-semibold text-white text-[34px] leading-tight">
+            Book a <span style="color: var(--accent)">demo</span><br/>with Rodrigo
+          </h3>
         </div>
 
-        <!-- Left info card -->
-        <div class="grid md:grid-cols-2 gap-6">
-          <article
-            class="rounded-card border bg-[var(--card)] p-[80px]"
-            style="border-color: var(--border)"
-          >
-            <div class="flex items-center gap-2 mb-4">
-              <!-- Hospitri brand -->
-              <img
-                class="h-[24px]"
-                src="assets/hospitri-logo-green.svg"
-                alt="brand"
-              />
-            </div>
+        <a target="_blank"
+           href="https://cal.com/hospitri/hospitri-get-to-know-us-our-services-web"
+           class="mt-6 inline-flex items-center justify-center font-extrabold uppercase tracking-wide rounded-xl px-5 py-3"
+           style="background: var(--accent); color: #0f3828">
+          Schedule Now
+        </a>
+      </aside>
+    </div>
+  </section>
 
-            <a
-              target="_blank"
-              href="https://cal.com/hospitri/hospitri-get-to-know-us-our-services-web"
-              class="inline-flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-[#E1F67A]"
-              style="background: var(--brand)"
-            >
-              Get to Know Us &amp; Our Services
-            </a>
-
-            <div class="mt-5">
-              <div class="text-sm font-semibold mb-2">
-                Here’s what we’ll go over:
-              </div>
-              <ul class="space-y-3 text-sm">
-                <li class="flex gap-3">
-                  <img
-                    class="h-[18px]"
-                    src="assets/chevron-circle-right.svg"
-                    alt=""
-                  />
-                  <div>
-                    <span class="font-semibold"
-                      >Your Personalized Audit Results</span
-                    >
-                    - Deep dive into your listing’s performance, optimization
-                    opportunities, and revenue potential.
-                  </div>
-                </li>
-                <li class="flex gap-3">
-                  <img
-                    class="h-[18px]"
-                    src="assets/chevron-circle-right.svg"
-                    alt=""
-                  />
-                  <div>
-                    <span class="font-semibold"
-                      >How Hospitri Can Accelerate Your Results</span
-                    >
-                    - See how our platform and expert team can implement these
-                    improvements for you.
-                  </div>
-                </li>
-                <li class="flex gap-3">
-                  <img
-                    class="h-[18px]"
-                    src="assets/chevron-circle-right.svg"
-                    alt=""
-                  />
-                  <div>
-                    <span class="font-semibold"
-                      >Your Custom Implementation Plan</span
-                    >
-                    - Specific next steps to achieve the results identified in
-                    your audit.
-                  </div>
-                </li>
-              </ul>
-            </div>
-          </article>
-
-          <!-- Right book-a-demo panel -->
-          <aside
-            class="rounded-card p-[80px] border shadow-card flex flex-col justify-between"
-            style="background: #064541"
-          >
-            <div class="flex flex-col items-center gap-[28px]">
-              <img
-                src="assets/rodrigo-avatar.png"
-                alt=""
-                class="w-[162px] h-[162px] rounded-full object-cover outline outline-[#E1F67A] border-[10px] border-[#064541]"
-              />
-              <h3
-                class="font-body font-semibold text-white text-[34px] leading-tight"
-              >
-                Book a <span style="color: var(--accent)">demo</span><br />with
-                Rodrigo
-              </h3>
-            </div>
-
-            <a
-              target="_blank"
-              href="https://cal.com/hospitri/hospitri-get-to-know-us-our-services-web"
-              class="mt-6 inline-flex items-center justify-center font-extrabold uppercase tracking-wide rounded-xl px-5 py-3"
-              style="background: var(--accent); color: #0f3828"
-            >
-              Schedule Now
-            </a>
-          </aside>
-        </div>
-      </section>
-
-      <footer class="mt-10 text-center text-[13px] text-[var(--muted)]">
-        © 2025 Hospitri LLC — Built with <span class="text-red-500">♥</span> in
-        Puerto Rico
-      </footer>
-    </main>
-  </body>
-</html>
+  <footer class="mt-10 text-center text-[13px] text-[var(--muted)]">
+    © 2025 Hospitri LLC — Built with <span class="text-red-500">♥</span> in Puerto Rico
+  </footer>
+</main>

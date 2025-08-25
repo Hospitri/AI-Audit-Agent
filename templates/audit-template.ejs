@@ -1,15 +1,67 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="utf-8" />
-        <title>Hospitri — Audit</title>
-        <base href="<%= baseHref %>" />
-    </head>
-    <body>
-        <%- include('audit-1.html') %>
+  <head>
+    <meta charset="utf-8" />
+    <title>Hospitri — Audit</title>
+    <!-- IMPORTANTE: base para que carguen /assets y /font desde templates/ -->
+    <base href="<%= baseHref %>" />
 
-        <div class="page-break"></div>
+    <!-- Tailwind CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: { extend: { borderRadius: { card: "14px" } } }
+      };
+    </script>
 
-        <%- include('audit-2.html') %>
-    </body>
+    <!-- Inter para body -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+
+    <!-- Fuentes locales Tiempos -->
+    <style>
+      @font-face { font-family:"Test Tiempos Headline"; src:url("font/TestTiemposHeadline-Light.otf") format("opentype"); font-weight:300; font-style:normal; font-display:swap; }
+      @font-face { font-family:"Test Tiempos Headline"; src:url("font/TestTiemposHeadline-Regular.otf") format("opentype"); font-weight:400; font-style:normal; font-display:swap; }
+      @font-face { font-family:"Test Tiempos Headline"; src:url("font/TestTiemposHeadline-Medium.otf") format("opentype"); font-weight:500; font-style:normal; font-display:swap; }
+      @font-face { font-family:"Test Tiempos Headline"; src:url("font/TestTiemposHeadline-Semibold.otf") format("opentype"); font-weight:600; font-style:normal; font-display:swap; }
+      @font-face { font-family:"Test Tiempos Headline"; src:url("font/TestTiemposHeadline-Bold.otf") format("opentype"); font-weight:700; font-style:normal; font-display:swap; }
+      @font-face { font-family:"Test Tiempos Headline"; src:url("font/TestTiemposHeadline-RegularItalic.otf") format("opentype"); font-weight:400; font-style:italic; font-display:swap; }
+      @font-face { font-family:"Test Tiempos Headline"; src:url("font/TestTiemposHeadline-MediumItalic.otf") format("opentype"); font-weight:500; font-style:italic; font-display:swap; }
+
+      /* Tokens de color (comunes a ambas páginas) */
+      :root{
+        --bg:#f5f5ef; --text:#262626; --muted:#6e7f75; --border:#dce6dd;
+        --card:#ffffff; --heading:#064541; --brand:#064541; --accent:#e1f579;
+        --chip:#e8f6ef; --chip-b:#c9e7da; --dark:#0f3d33; --divider:#e8ebe5;
+        --soft:#f6f7f2; --dot:#0c6b57; --badge:#eaf2ec; --qwin-bg:#f8f9f4;
+        --yellow:#f0f6c2; --yellow-b:#e7edab;
+      }
+      .font-heading{ font-family:"Test Tiempos Headline","Tiempos Headline",ui-serif,Georgia,serif; letter-spacing:-0.01em; }
+      .font-body{ font-family:"Inter", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
+
+      /* Ajustes PDF */
+      @media print {
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      }
+      .page-break{ page-break-before: always; break-before: page; }
+
+      /* Forzar 2 columnas sin depender de breakpoints */
+      .two-col{ display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:1rem; }
+      /* Evitar cortes feos de tarjetas/listas */
+      .avoid-break{ break-inside: avoid; page-break-inside: avoid; }
+      /* Pequeños helpers que usabas en los heads originales */
+      .rule-after:after{ content:""; display:block; height:1px; background:var(--divider); flex:1; margin-left:0.75rem; margin-top:0.6rem; }
+      .shadow-soft{ box-shadow:0 1px 0 rgba(0,0,0,0.03); }
+      .shadow-card{ box-shadow:0 4px 18px rgba(15,36,46,0.06); }
+    </style>
+  </head>
+
+  <body class="font-body text-[var(--text)] bg-[var(--bg)]">
+    <!-- Página 1 -->
+    <%- include('audit-1.html') %>
+
+    <div class="page-break"></div>
+
+    <!-- Página 2 -->
+    <%- include('audit-2.html') %>
+  </body>
 </html>
