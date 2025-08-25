@@ -4,299 +4,270 @@
   <meta charset="utf-8" />
   <title>Hospitri — Audit</title>
 
-  <% if (baseHref) { %>
-    <!-- Hace que rutas relativas (assets/, font/) funcionen en Puppeteer -->
-    <base href="file:///<%= baseHref.replace(/\\/g,'/') %>">
+  <!-- HACE QUE assets/ y font/ resuelvan desde el root del repo -->
+  <% if (typeof baseHref === 'string' && baseHref) { %>
+    <base href="file://<%= baseHref %>">
   <% } %>
 
   <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-
-  <!-- Inter para UI -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
-
   <script>
     tailwind.config = {
-      theme: { extend: { borderRadius: { card: "14px" } } },
-      corePlugins: { preflight: true }
-    }
+      theme: {
+        extend: { borderRadius: { card: "14px" } }
+      }
+    };
   </script>
 
+  <!-- Inter -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Tiempos local -->
   <style>
-    /* Fuentes locales Test Tiempos Headline */
-    @font-face { font-family: "Test Tiempos Headline"; src: url("font/TestTiemposHeadline-Light.otf") format("opentype"); font-weight: 300; font-style: normal; font-display: swap; }
-    @font-face { font-family: "Test Tiempos Headline"; src: url("font/TestTiemposHeadline-Regular.otf") format("opentype"); font-weight: 400; font-style: normal; font-display: swap; }
-    @font-face { font-family: "Test Tiempos Headline"; src: url("font/TestTiemposHeadline-Medium.otf") format("opentype"); font-weight: 500; font-style: normal; font-display: swap; }
-    @font-face { font-family: "Test Tiempos Headline"; src: url("font/TestTiemposHeadline-Semibold.otf") format("opentype"); font-weight: 600; font-style: normal; font-display: swap; }
-    @font-face { font-family: "Test Tiempos Headline"; src: url("font/TestTiemposHeadline-Bold.otf") format("opentype"); font-weight: 700; font-style: normal; font-display: swap; }
-    @font-face { font-family: "Test Tiempos Headline"; src: url("font/TestTiemposHeadline-RegularItalic.otf") format("opentype"); font-weight: 400; font-style: italic; font-display: swap; }
-    @font-face { font-family: "Test Tiempos Headline"; src: url("font/TestTiemposHeadline-MediumItalic.otf") format("opentype"); font-weight: 500; font-style: italic; font-display: swap; }
+    @font-face { font-family: "Test Tiempos Headline"; src: url("font/TestTiemposHeadline-Regular.otf") format("opentype"); font-weight:400; font-style:normal; font-display:swap; }
+    @font-face { font-family: "Test Tiempos Headline"; src: url("font/TestTiemposHeadline-Medium.otf")  format("opentype"); font-weight:500; font-style:normal; font-display:swap; }
+    @font-face { font-family: "Test Tiempos Headline"; src: url("font/TestTiemposHeadline-Semibold.otf") format("opentype"); font-weight:600; font-style:normal; font-display:swap; }
+    @font-face { font-family: "Test Tiempos Headline"; src: url("font/TestTiemposHeadline-Bold.otf")     format("opentype"); font-weight:700; font-style:normal; font-display:swap; }
+    @font-face { font-family: "Test Tiempos Headline"; src: url("font/TestTiemposHeadline-RegularItalic.otf") format("opentype"); font-weight:400; font-style:italic; font-display:swap; }
 
-    :root{
-      --bg: #f5f5ef;
-      --text: #262626;
-      --muted: #6e7f75;
-      --border: #dce6dd;
-      --card: #ffffff;
-      --heading: #064541;
-      --brand: #064541;
-      --accent: #e1f579;
-      --chip: #e8f6ef;
-      --chip-b: #c9e7da;
-      --divider: #e8ebe5;
-      --qwin-bg: #f8f9f4;
+    :root {
+      --bg:#f5f5ef; --text:#262626; --muted:#6e7f75; --border:#dce6dd; --card:#ffffff;
+      --heading:#064541; --brand:#064541; --accent:#e1f579; --chip:#e8f6ef; --chip-b:#c9e7da;
+      --panel:#0f3d33; --divider:#e8ebe5;
     }
-    .font-heading { font-family: "Test Tiempos Headline", ui-serif, Georgia, serif; letter-spacing: -0.01em; }
-    .font-body { font-family: "Inter", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; }
-    .rule-after::after { content:""; display:block; height:1px; background:var(--divider); flex:1; margin-left:.75rem; margin-top:.6rem; }
-    .shadow-soft { box-shadow: 0 1px 0 rgba(0,0,0,0.03); }
-    .shadow-card { box-shadow: 0 4px 18px rgba(15,36,46,0.06); }
-
-    /* Ajuste para A4: limitar ancho ~740-780px para no cortar */
-    .page-wrap { max-width: 760px; width: 100%; margin-left: auto; margin-right: auto; }
-
-    /* Forzar quiebre de página entre carillas */
-    .page-break { page-break-after: always; }
-
-    /* Evitar cortes feos */
-    .avoid-break { break-inside: avoid; page-break-inside: avoid; }
+    .font-heading{ font-family:"Test Tiempos Headline","Tiempos Headline",ui-serif,Georgia,serif; letter-spacing:-0.01em; }
+    .font-body{ font-family:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial; }
+    .sheet{ max-width: 740px; margin: 0 auto; }
+    .cats-grid{ display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 16px; }
+    .avoid-break{ break-inside: avoid; page-break-inside: avoid; }
+    .page-break{ page-break-before: always; }
+    .rule-after:after { content:""; display:block; height:1px; background:var(--divider); flex:1; margin-left:0.75rem; margin-top:0.6rem; }
+    img { max-width: 100%; }
   </style>
 </head>
-
 <body class="font-body text-[var(--text)] bg-[var(--bg)]">
-  <% 
-    const listingTitle = (audit && (audit.listing_title || (audit.meta && audit.meta.title))) || '';
-    const overall = Number(audit?.overall_score || 0);
-    const cats = audit?.category_breakdown || {};
-    const qwins = Array.isArray(audit?.quick_wins) ? audit.quick_wins.slice(0,3) : [];
-    const iconFor = {
-      title: "assets/doc-icon.svg",
-      description: "assets/lines-icon.svg",
-      images: "assets/image-icon.svg",
-      amenities: "assets/wifi-icon.svg",
-      reviews: "assets/chat-icon.svg",
-      pricing: "assets/receipt-icon.svg",
-      policies_fees: "assets/receipt-icon.svg",
-      response_speed: "assets/bolt-icon.svg"
-    };
-    function capLabel(k){
-      return (k||'').replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
-    }
-  %>
 
-  <!-- ============== PAGE 1 ============== -->
-  <main class="page-wrap px-6 py-6 md:py-8 bg-[var(--bg)]">
-    <!-- Top row -->
-    <div class="grid grid-cols-[auto_1fr] gap-6 items-center">
+<%
+  // helpers
+  const safe = (v, d='') => (v==null ? d : v);
+  const score = Number(safe(audit?.overall_score, 0)).toFixed(1);
+  const listingTitle = safe(audit?.listing_title, '');
+  const cb = audit?.category_breakdown || {};
+  const order = ['title','description','images','amenities','reviews','pricing','policies_fees','response_speed'];
+  const labels = {
+    title:'Title', description:'Description', images:'Images', amenities:'Amenities',
+    reviews:'Reviews', pricing:'Pricing', policies_fees:'Policies fees', response_speed:'Response speed'
+  };
+  const iconFor = k => ({
+    title:'assets/doc-icon.svg',
+    description:'assets/lines-icon.svg',
+    images:'assets/image-icon.svg',
+    amenities:'assets/wifi-icon.svg',
+    reviews:'assets/chat-icon.svg',
+    pricing:'assets/receipt-icon.svg',
+    policies_fees:'assets/receipt-icon.svg',
+    response_speed:'assets/bolt-icon.svg'
+  }[k] || 'assets/doc-icon.svg');
+%>
+
+<!-- ============================
+     PAGE 1: Reporte
+============================= -->
+<main class="sheet px-6 py-6 md:py-8">
+  <!-- Top row: logo + heading -->
+  <div class="grid grid-cols-[auto_1fr] gap-6 items-center">
+    <div class="flex items-center gap-2">
+      <img class="h-[32px]" src="assets/hospitri-logo-green.svg" alt="hospitri" />
+    </div>
+    <div class="flex flex-col items-end">
+      <div class="text-[15px] text-[var(--brand)]">Here’s your free audit!</div>
+      <h1 class="font-heading text-[30px] md:text-[36px] leading-tight text-[var(--text)]">
+        <%= listingTitle ? listingTitle : '' %>
+      </h1>
+    </div>
+  </div>
+
+  <!-- Category breakdown -->
+  <section class="mt-6">
+    <div class="flex items-center justify-between mb-3">
       <div class="flex items-center gap-2">
-        <img class="h-[32px]" src="assets/hospitri-logo-green.svg" alt="Hospitri"/>
+        <span class="w-[2px] h-5 rounded-sm" style="background:var(--brand)"></span>
+        <h2 class="text-[18px] font-bold text-[var(--heading)]">Category Breakdown</h2>
       </div>
-      <div class="flex flex-col items-end">
-        <div class="text-[15px] text-[var(--brand)]">Here’s your free audit!</div>
-        <h1 class="font-heading text-[28px] md:text-[34px] leading-tight text-[var(--text)] text-right">
-          <%= listingTitle ? listingTitle : 'Your listing' %>
-        </h1>
+
+      <!-- score pill -->
+      <div class="flex items-center gap-2">
+        <div class="flex items-center rounded-full pl-[4px] pr-[20px] py-[4px] border" style="background:var(--accent); border-color:#858585">
+          <div class="flex items-center gap-2 bg-[var(--brand)] rounded-full py-[4px] px-[14px]">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 3.8 14.9 9l5.7.8-4.1 4 1 5.7L12 16.8 6.5 19.5l1-5.7-4.1-4L9.1 9 12 3.8Z" stroke="#E1F67A" stroke-width="1.4" fill="none"/></svg>
+            <span class="text-[18px] font-bold text-[#E1F579]"><%= score %></span>
+          </div>
+          <span class="ml-3 text-[13px]">Overall score</span>
+        </div>
       </div>
     </div>
 
-    <!-- Header: Category Breakdown + Overall pill -->
-    <section class="mt-6">
-      <div class="flex flex-row items-end justify-between mb-[14px]">
-        <div class="flex items-center gap-2">
-          <span class="w-[2px] h-5 rounded-sm" style="background: var(--brand)"></span>
-          <h2 class="text-[18px] font-bold text-[var(--heading)]">Category Breakdown</h2>
+    <!-- grid 2 columnas SIEMPRE -->
+    <div class="cats-grid">
+      <% for (const k of order) {
+           const v = cb[k]; if (!v) continue;
+      %>
+      <article class="avoid-break rounded-card border bg-[var(--card)] p-4 shadow"
+               style="border-color:var(--border)">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center rule-after">
+            <h3 class="font-semibold"><%= labels[k] %></h3>
+          </div>
+          <div class="w-full h-[1px] bg-[var(--brand)]"></div>
+          <img class="h-[26px]" src="<%= iconFor(k) %>" alt="" />
         </div>
-
-        <div class="flex items-center justify-end gap-2">
-          <div class="flex items-center rounded-full pl-[4px] pr-[16px] py-[4px] border bg-[var(--accent)] gap-[12px]" style="border-color:#858585">
-            <div class="flex items-center gap-2 bg-[var(--brand)] rounded-full py-[4px] px-[12px]">
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                <path d="M12 3.8 14.9 9l5.7.8-4.1 4 1 5.7L12 16.8 6.5 19.5l1-5.7-4.1-4L9.1 9 12 3.8Z" stroke="#E1F67A" stroke-width="1.4" fill="none"/>
-              </svg>
-              <span class="text-[18px] font-bold text-[#E1F579]"><%= overall.toFixed(1) %></span>
-            </div>
-            <span class="text-[13px] text-[var(--text)]">Overall score</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Grid de categorías -->
-      <div class="grid md:grid-cols-2 gap-4">
-        <% for (const [k, v] of Object.entries(cats)) { %>
-          <article class="avoid-break rounded-card border shadow-soft bg-[var(--card)] p-4 relative" style="border-color: var(--border)">
-            <div class="flex items-center justify-between mb-2">
-              <div class="flex items-center rule-after">
-                <h3 class="font-semibold"><%= capLabel(k) %></h3>
-              </div>
-              <div class="w-full h-[1px] bg-[var(--heading)]"></div>
-              <img class="h-[26px]" src="<%= iconFor[k] || 'assets/doc-icon.svg' %>" alt=""/>
-            </div>
-            <div class="text-sm leading-relaxed">
-              <p class="mb-1">
-                <span class="font-semibold">Score: <%= Number(v?.numeric ?? 0) %></span> — Grade: <%= v?.grade || '-' %>
-              </p>
-              <% if (v?.what_works) { %>
-                <p class="mb-1"><span class="font-semibold">What works:</span> <%= v.what_works %></p>
-              <% } %>
-              <% if (v?.what_to_improve) { %>
-                <p><span class="font-semibold">Improve:</span> <%= v.what_to_improve %></p>
-              <% } %>
-            </div>
-          </article>
-        <% } %>
-      </div>
-    </section>
-
-    <!-- Quick wins -->
-    <section class="mt-6">
-      <div class="flex items-center gap-2 mb-3">
-        <span class="w-[2px] h-5 rounded-sm" style="background: var(--brand)"></span>
-        <h2 class="text-[18px] font-semibold text-[var(--heading)]">Quick Wins</h2>
-      </div>
-
-      <ul class="space-y-2">
-        <% qwins.forEach(q => { %>
-          <li class="avoid-break rounded-card p-2 flex flex-wrap items-center gap-3 border" style="border-color: var(--border); background: white;">
-            <div class="flex items-center gap-2 min-w-[260px]">
-              <img class="h-[18px]" src="assets/chevron-circle-right.svg" alt=""/>
-              <span class="font-semibold"><%= q.action %></span>
-            </div>
-            <div class="flex items-center gap-2 text-xs">
-              <span class="px-2 py-1 rounded-full border" style="background: white; color:#262626; border-color:#737373">Effort: <%= q.effort %></span>
-              <span class="px-2 py-1 rounded-full border" style="background: var(--accent); color:#262626; border-color:#858585">
-                Impact: <%= q.potential_uplift %><% if (q.potential_uplift_type) { %> (<%= q.potential_uplift_type %>)<% } %>
-              </span>
-            </div>
-          </li>
-        <% }) %>
-      </ul>
-
-      <!-- legend -->
-      <div class="avoid-break mt-3 rounded-[10px] border px-[12px] py-[12px] text-[12px] text-[#737373] text-center" style="border-color: var(--border); background: var(--qwin-bg)">
-        Legend: $ = revenue impact, ⚡ = guest-experience impact. More symbols = higher impact (e.g., $$$, ⚡⚡).
-      </div>
-    </section>
-
-    <!-- Pro tip -->
-    <section class="mt-6">
-      <div class="flex items-center gap-2 mb-2">
-        <span class="w-[2px] h-5 rounded-sm" style="background: var(--brand)"></span>
-        <h2 class="text-[18px] font-semibold text-[var(--heading)]">Pro Tip</h2>
-      </div>
-      <p class="text-[15px]"><%= audit?.pro_tip || '' %></p>
-    </section>
-  </main>
-
-  <div class="page-break"></div>
-
-  <!-- ============== PAGE 2 ============== -->
-  <main class="page-wrap px-6 py-8 bg-[var(--bg)]">
-    <!-- Hero heading -->
-    <header class="mb-6">
-      <div class="flex flex-row justify-between items-center">
-        <h1 class="font-heading text-[34px] md:text-[42px] leading-[46px] text-[var(--text)]">
-          Your Solution for<br/>
-          <span class="text-[var(--heading)]">Vacation Rental Management</span>
-        </h1>
-        <img class="h-[24px]" src="assets/hospitri-home-icon.svg" alt=""/>
-      </div>
-      <p class="mt-3 text-[15px] text-[#666666]">
-        Hospitri was created to make property management simple, transparent, and profitable. From booking insights to finances, cleaning schedules to guest communication, everything is managed in one place so you can grow without the hassle.
-      </p>
-    </header>
-
-    <!-- Why Us -->
-    <div class="mb-3">
-      <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[13px] font-medium border" style="background: var(--accent); border-color:#858585; color:#22473a;">Why Us?</span>
-    </div>
-
-    <section class="mb-6">
-      <h2 class="font-heading text-[30px] text-[var(--text)]">Why <span style="color:var(--brand)">Hospitri</span>?</h2>
-      <p class="text-[15px] text-[#666666]">Cut out the middleman and get more value while supporting local hospitality.</p>
-
-      <div class="grid md:grid-cols-3 gap-4 mt-5">
-        <article class="rounded-card p-5 border shadow-card" style="background:#064541">
-          <div class="flex flex-col items-center gap-6">
-            <img src="assets/dashboard-icon.svg" alt=""/>
-            <div>
-              <div class="text-white text-center font-semibold mb-1">All-in-One Dashboard</div>
-              <p class="text-white/80 text-sm text-center">Manage bookings, guests, and finances seamlessly.</p>
-            </div>
-          </div>
-        </article>
-        <article class="rounded-card p-5 border shadow-card" style="background:#064541">
-          <div class="flex flex-col items-center gap-6">
-            <img src="assets/calendar-icon.svg" alt=""/>
-            <div>
-              <div class="text-white text-center font-semibold mb-1">Multi-OTA Calendar</div>
-              <p class="text-white/80 text-sm text-center">Manage your listings across Airbnb, Booking.com, Vrbo, and more — all in one place.</p>
-            </div>
-          </div>
-        </article>
-        <article class="rounded-card p-5 border shadow-card" style="background:#064541">
-          <div class="flex flex-col items-center gap-6">
-            <img src="assets/comm-icon.svg" alt=""/>
-            <div>
-              <div class="text-white text-center font-semibold mb-1">24/7 Communication</div>
-              <p class="text-white/80 text-sm text-center">Experienced virtual property managers to streamline operations and guest satisfaction.</p>
-            </div>
-          </div>
-        </article>
-      </div>
-    </section>
-
-    <!-- CTA -->
-    <section class="mt-8 grid md:grid-cols-2 gap-6">
-      <!-- Left info card -->
-      <article class="rounded-card border bg-[var(--card)] p-[40px]" style="border-color: var(--border)">
-        <div class="flex items-center gap-2 mb-4">
-          <img class="h-[24px]" src="assets/hospitri-logo-green.svg" alt="brand"/>
-        </div>
-
-        <a target="_blank" href="https://cal.com/hospitri/hospitri-get-to-know-us-our-services-web"
-           class="inline-flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-[#0F3828]"
-           style="background: var(--accent)">
-          Get to Know Us &amp; Our Services
-        </a>
-
-        <div class="mt-5">
-          <div class="text-sm font-semibold mb-2">Here’s what we’ll go over:</div>
-          <ul class="space-y-3 text-sm">
-            <li class="flex gap-3">
-              <img class="h-[18px]" src="assets/chevron-circle-right.svg" alt=""/>
-              <div><span class="font-semibold">Your Personalized Audit Results</span> — Deep dive into your listing’s performance, optimization opportunities, and revenue potential.</div>
-            </li>
-            <li class="flex gap-3">
-              <img class="h-[18px]" src="assets/chevron-circle-right.svg" alt=""/>
-              <div><span class="font-semibold">How Hospitri Can Accelerate Your Results</span> — See how our platform and expert team can implement these improvements for you.</div>
-            </li>
-            <li class="flex gap-3">
-              <img class="h-[18px]" src="assets/chevron-circle-right.svg" alt=""/>
-              <div><span class="font-semibold">Your Custom Implementation Plan</span> — Specific next steps to achieve the results identified in your audit.</div>
-            </li>
-          </ul>
+        <div class="text-sm leading-relaxed">
+          <p class="mb-1"><span class="font-semibold">Score: <%= v.numeric %></span> — Grade: <%= v.grade %></p>
+          <p class="mb-1"><span class="font-semibold">What works:</span> <%= v.what_works %></p>
+          <p><span class="font-semibold">Improve:</span> <%= v.what_to_improve %></p>
         </div>
       </article>
+      <% } %>
+    </div>
+  </section>
 
-      <!-- Right book-a-demo -->
-      <aside class="rounded-card p-[40px] border shadow-card flex flex-col justify-between" style="background:#064541">
-        <div class="flex flex-col items-center gap-[24px]">
-          <img src="assets/rodrigo-avatar.png" alt="" class="w-[150px] h-[150px] rounded-full object-cover outline outline-[#E1F67A] border-[8px] border-[#064541]"/>
-          <h3 class="font-body font-semibold text-white text-[28px] leading-tight text-center">
-            Book a <span style="color: var(--accent)">demo</span><br/>with Rodrigo
-          </h3>
+  <!-- Quick wins -->
+  <section class="mt-6">
+    <div class="flex items-center gap-2 mb-3">
+      <span class="w-[2px] h-5 rounded-sm" style="background:var(--brand)"></span>
+      <h2 class="text-[18px] font-semibold text-[var(--heading)]">Quick Wins</h2>
+    </div>
+
+    <ul class="space-y-2">
+      <% (audit?.quick_wins || []).slice(0,3).forEach(q => { %>
+        <li class="avoid-break rounded-card p-2 flex items-center justify-between gap-3 border"
+            style="border-color:var(--border); background:#f8f9f4">
+          <div class="flex items-center gap-2">
+            <img class="h-[18px]" src="assets/chevron-circle-right.svg" alt="" />
+            <span class="font-semibold"><%= q.action %></span>
+          </div>
+          <div class="flex items-center gap-2 text-xs">
+            <span class="px-2 py-1 rounded-full border" style="background:#fff; color:#262626; border-color:#737373">
+              Effort: <%= q.effort %>
+            </span>
+            <span class="px-2 py-1 rounded-full border" style="background:var(--accent); color:#262626; border-color:#858585">
+              Impact: <%= q.potential_uplift %><% if (q.potential_uplift_type) { %> (<%= q.potential_uplift_type %>)<% } %>
+            </span>
+          </div>
+        </li>
+      <% }) %>
+    </ul>
+
+    <div class="mt-3 rounded-[10px] border px-[12px] py-[12px] text-[12px] text-[#737373] text-center"
+         style="border-color:var(--border); background:#f8f9f4">
+      Legend: $ = revenue impact, ⚡ = guest-experience impact. More symbols = higher impact (e.g., $$$, ⚡⚡).
+    </div>
+  </section>
+
+  <!-- Pro tip -->
+  <section class="mt-6">
+    <div class="flex items-center gap-2 mb-2">
+      <span class="w-[2px] h-5 rounded-sm" style="background:var(--brand)"></span>
+      <h2 class="text-[18px] font-semibold text-[var(--heading)]">Pro Tip</h2>
+    </div>
+    <p class="text-[15px] max-w-[720px]"><%= safe(audit?.pro_tip,'') %></p>
+  </section>
+</main>
+
+<!-- page break -->
+<div class="page-break"></div>
+
+<!-- ============================
+     PAGE 2: Book a demo
+============================= -->
+<main class="sheet px-6 py-8">
+  <!-- Hero heading -->
+  <header class="mb-6">
+    <div class="flex flex-row justify-between items-center">
+      <h1 class="font-heading text-[34px] md:text-[42px] leading-[44px] text-[var(--text)]">
+        Your Solution for<br />
+        <span class="text-[var(--heading)]">Vacation Rental Management</span>
+      </h1>
+      <img class="h-[24px]" src="assets/hospitri-home-icon.svg" alt="" />
+    </div>
+    <p class="mt-3 text-[15px] text-[#666666] max-w-[720px]">
+      Hospitri was created to make property management simple, transparent, and profitable. From booking insights to finances, cleaning schedules to guest communication, everything is managed in one place so you can grow without the hassle.
+    </p>
+  </header>
+
+  <!-- Why Us tag -->
+  <div class="mb-3">
+    <span class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-[13px] font-medium border"
+          style="background: var(--accent); border-color:#858585; color:#22473a;">
+      Why Us?
+    </span>
+  </div>
+
+  <!-- Why Hospitri -->
+  <section class="mb-6">
+    <h2 class="font-heading text-[28px] text-[var(--text)]">
+      Why <span style="color: var(--brand)">Hospitri</span>?
+    </h2>
+    <p class="text-[15px] text-[#666666] max-w-[720px]">
+      Cut out the middleman and get more value while supporting local hospitality.
+    </p>
+
+    <div class="grid md:grid-cols-3 gap-4 mt-5">
+      <article class="rounded-card p-5 border shadow" style="background:#064541">
+        <div class="flex flex-col items-center gap-4">
+          <img src="assets/dashboard-icon.svg" alt="" />
+          <div>
+            <div class="text-white text-center font-semibold mb-1">All-in-One Dashboard</div>
+            <p class="text-white/80 text-sm text-center">Manage bookings, guests, and finances seamlessly.</p>
+          </div>
         </div>
-        <a target="_blank" href="https://cal.com/hospitri/hospitri-get-to-know-us-our-services-web"
-           class="mt-6 inline-flex items-center justify-center font-extrabold uppercase tracking-wide rounded-xl px-5 py-3"
-           style="background: var(--accent); color:#0f3828">
-          Schedule Now
-        </a>
-      </aside>
-    </section>
+      </article>
+      <article class="rounded-card p-5 border shadow" style="background:#064541">
+        <div class="flex flex-col items-center gap-4">
+          <img src="assets/calendar-icon.svg" alt="" />
+          <div>
+            <div class="text-white text-center font-semibold mb-1">Multi-OTA Calendar</div>
+            <p class="text-white/80 text-sm text-center">Manage your listings across Airbnb, Booking.com, Vrbo, and more — all in one place.</p>
+          </div>
+        </div>
+      </article>
+      <article class="rounded-card p-5 border shadow" style="background:#064541">
+        <div class="flex flex-col items-center gap-4">
+          <img src="assets/comm-icon.svg" alt="" />
+          <div>
+            <div class="text-white text-center font-semibold mb-1">24/7 Communication</div>
+            <p class="text-white/80 text-sm text-center">Experienced virtual property managers to streamline operations and guest satisfaction.</p>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
 
-    <footer class="mt-8 text-center text-[13px] text-[var(--muted)]">
-      © 2025 Hospitri LLC — Built with <span class="text-red-500">♥</span> in Puerto Rico
-    </footer>
-  </main>
-</body>
-</html>
+  <!-- CTA section -->
+  <section class="mt-8 grid md:grid-cols-2 gap-6">
+    <!-- Left info card -->
+    <article class="rounded-card border bg-[var(--card)] p-8" style="border-color:var(--border)">
+      <div class="flex items-center gap-2 mb-4">
+        <img class="h-[22px]" src="assets/hospitri-logo-green.svg" alt="brand" />
+      </div>
+
+      <a target="_blank"
+         href="https://cal.com/hospitri/hospitri-get-to-know-us-our-services-web"
+         class="inline-flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-[#E1F67A]"
+         style="background:var(--brand)">
+        Get to Know Us &amp; Our Services
+      </a>
+
+      <div class="mt-5">
+        <div class="text-sm font-semibold mb-2">Here’s what we’ll go over:</div>
+        <ul class="space-y-3 text-sm">
+          <li class="flex gap-3">
+            <img class="h-[18px]" src="assets/chevron-circle-right.svg" alt="" />
+            <div><span class="font-semibold">Your Personalized Audit Results</span> - Deep dive into your listing’s performance, optimization opportunities, and revenue potential.</div>
+          </li>
+          <li class="flex gap-3">
+            <img class="h-[18px]" src="assets/chevron-circle-right.svg" alt="" />
+            <div><span class="font-semibold">How Hospitri Can Accelerate Your Results</span> - See how our platform and expert team can implement these improvements for you.</div>
+          </li>
+          <li class="flex gap-3">
+            <img class="h-[18px]" src="assets/chevron-circle-right.sv
