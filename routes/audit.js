@@ -128,7 +128,7 @@ router.post('/', async (req, res) => {
         const startedAt = Date.now();
         try {
             const s0 = Date.now();
-            const html = await scrapePage(url);
+            const htmlSrc = await scrapePage(url);
             t('scrape_ok')({
                 submission_id: submissionId || null,
                 email,
@@ -137,8 +137,7 @@ router.post('/', async (req, res) => {
             });
 
             const s1 = Date.now();
-            const auditJson = await generateAudit({ html });
-
+            const auditJson = await generateAudit({ html: htmlSrc });
             t('openai_ok')({
                 submission_id: submissionId || null,
                 email,
@@ -146,36 +145,23 @@ router.post('/', async (req, res) => {
                 props: { ms: Date.now() - s1 },
             });
 
-            const templatePath = path.resolve(
-                __dirname,
-                '..',
-                'templates',
-                'audit-template.ejs'
-            );
-
-            let str;
+            const TEMPLATES_DIR = path.resolve(__dirname, '..', 'templates');
+            const templateFile = path.join(TEMPLATES_DIR, 'audit-template.ejs');
+            let html;
             try {
-                const tpl = await fs.readFile(templatePath, 'utf8');
-                const baseHref =
-                    path.resolve(__dirname, '..', 'templates') + path.sep;
-                str = ejs.render(tpl, {
-                    audit: auditJson,
-                    url,
-                    name,
-                    baseHref,
-                });
+                const tpl = await fs.readFile(templateFile, 'utf8');
+                const baseHref = `file://${TEMPLATES_DIR.replace(/\\/g, '/')}/`;
+                html = ejs.render(
+                    tpl,
+                    { audit: auditJson, url, name, baseHref },
+                    { filename: templateFile }
+                );
             } catch {
-                str = ejs.render(fallbackTpl, {
-                    audit: auditJson,
-                    url,
-                    name,
-                    baseHref: '',
-                });
+                html = ejs.render(fallbackTpl, { audit: auditJson, url, name });
             }
 
             const s2 = Date.now();
-            const pdfPath = await renderPdfFromHtml(str);
-
+            const pdfPath = await renderPdfFromHtml(html);
             t('pdf_ok')({
                 submission_id: submissionId || null,
                 email,
