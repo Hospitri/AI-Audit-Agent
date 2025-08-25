@@ -8,7 +8,8 @@ function toFileURL(p) {
     return u.endsWith('/') ? u : u + '/';
 }
 
-async function renderPdfFromHtml(html, { baseDir }) {
+async function renderPdfFromHtml(html, opts = {}) {
+    const { baseDir } = opts;
     const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'audit-'));
     const wrapperPath = path.join(tmpDir, 'audit-wrapper.html');
 

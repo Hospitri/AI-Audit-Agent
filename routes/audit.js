@@ -161,7 +161,9 @@ router.post('/', async (req, res) => {
             }
 
             const s2 = Date.now();
-            const pdfPath = await renderPdfFromHtml(html);
+            const pdfPath = await renderPdfFromHtml(html, {
+                baseDir: TEMPLATES_DIR,
+            });
             t('pdf_ok')({
                 submission_id: submissionId || null,
                 email,
