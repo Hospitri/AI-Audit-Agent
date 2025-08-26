@@ -213,7 +213,7 @@ router.post('/', async (req, res) => {
                     range_bucket_id: null,
                     actual_listings: null,
                     source_id: sourceId,
-                    source_url: 'https://hospitri.com/audit-agent#contact',
+                    source_url: 'https://hospitri.com/ai-audit',
                 });
 
                 await addLeadToList(client, leadId, listId);

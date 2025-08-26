@@ -63,7 +63,7 @@ SELECT
   date_trunc('day', created_at) AS day,
   COUNT(*)                      AS new_leads
 FROM leads
-WHERE source_url = 'https://hospitri.com/audit-agent#contact'
+WHERE source_url = 'https://hospitri.com/ai-audit'
 GROUP BY 1
 ORDER BY 1 DESC;
 

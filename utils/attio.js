@@ -56,6 +56,7 @@ async function upsertPerson({ name, email, phone }) {
                 classification: [process.env.ATTIO_CLASSIFICATION_LEAD_ID],
                 email_addresses: [String(email).toLowerCase()],
                 source: process.env.ATTIO_SOURCE_WEBSITE_FORM_ID,
+                source_url: 'https://hospitri.com/ai-audit',
                 ...(phone ? { phone_numbers: [phone] } : {}),
             },
         },
