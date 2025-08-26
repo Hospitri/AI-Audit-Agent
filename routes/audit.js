@@ -78,6 +78,7 @@ router.post('/', async (req, res) => {
         req.socket.remoteAddress;
     const submissionId = req.headers['framer-webhook-submission-id'] || '';
     const { name, email, phone, url } = req.body || {};
+    console.log("**//Phone Number:", phone);
 
     if (!url || !email || !name)
         return res.status(400).json({ error: 'name, email and url required' });
