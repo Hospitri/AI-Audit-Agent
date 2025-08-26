@@ -80,7 +80,6 @@ router.post('/', async (req, res) => {
     const submissionId = req.headers['framer-webhook-submission-id'] || '';
     const { name, email, url } = req.body || {};
     const { e164: phone } = normalizePhoneE164(req.body['Full Phone Number']);
-    console.log('PHONE:', phone);
 
     if (!url || !email || !name)
         return res.status(400).json({ error: 'name, email and url required' });
