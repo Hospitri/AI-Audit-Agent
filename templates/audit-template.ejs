@@ -37,7 +37,13 @@
 
       @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 
-      .page-break{ page-break-before: always; break-before: page; }
+      .page-break{
+        height:0;
+        margin:0;
+        border:0;
+        page-break-after: always;
+        break-after: page;
+      }
       .two-col{ display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:1rem; }
       .avoid-break{ break-inside: avoid; page-break-inside: avoid; }
       .rule-after:after{ content:""; display:block; height:1px; background:var(--divider); flex:1; margin-left:0.75rem; margin-top:0.6rem; }
@@ -48,7 +54,7 @@
 
   <body class="font-body text-[var(--text)]">
     <%- include('audit-1.html') %>
-    <!-- <div class="page-break"></div> -->
+    <div class="page-break"></div>
     <%- include('audit-2.html') %>
   </body>
 </html>
