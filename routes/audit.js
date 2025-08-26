@@ -16,6 +16,7 @@ const { verifyTurnstile } = require('../utils/turnstile');
 const { acquire } = require('../utils/concurrency');
 const { upsertPerson, addToAuditList } = require('../utils/attio');
 const { t } = require('../utils/metrics');
+const { normalizePhoneE164 } = require('../utils/phone');
 
 function ipLimiterOrBypass(req, res, next) {
     const ua = (req.headers['user-agent'] || '').toLowerCase();
@@ -77,9 +78,9 @@ router.post('/', async (req, res) => {
         req.headers['x-forwarded-for']?.toString().split(',')[0].trim() ||
         req.socket.remoteAddress;
     const submissionId = req.headers['framer-webhook-submission-id'] || '';
-    const { name, email , url } = req.body || {};
-    const phone = req.body['Full Phone Number'];
-    console.log("**//phone:", phone);
+    const { name, email, url } = req.body || {};
+    const { e164: phone } = normalizePhoneE164(req.body['Full Phone Number']);
+    console.log('PHONE:', phone);
 
     if (!url || !email || !name)
         return res.status(400).json({ error: 'name, email and url required' });
