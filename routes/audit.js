@@ -70,6 +70,7 @@ body{font-family:Arial,sans-serif;margin:32px}pre{white-space:pre-wrap}
 </body></html>`;
 
 router.post('/', async (req, res) => {
+    const TURNSTILE_BYPASS = process.env.TURNSTILE_BYPASS === '1';
     const tsToken =
         req.body?.['cf-turnstile-response'] || req.body?.turnstileToken;
     const remoteip =
@@ -85,7 +86,10 @@ router.post('/', async (req, res) => {
     if (!isValidUrl(url))
         return res.status(400).json({ error: 'invalid or unsupported URL' });
 
-    const okTs = await verifyTurnstile(tsToken, remoteip);
+    const okTs = TURNSTILE_BYPASS
+        ? true
+        : await verifyTurnstile(tsToken, remoteip);
+
     if (!okTs) {
         t('captcha_fail')({ submission_id: submissionId || null, email, url });
         res.set('X-Turnstile', 'fail');
@@ -99,10 +103,22 @@ router.post('/', async (req, res) => {
         props: { ua: req.headers['user-agent'] || '', ip: remoteip || '' },
     });
 
-    t('captcha_ok')({ submission_id: submissionId || null, email, url });
+    if (TURNSTILE_BYPASS) {
+        t('captcha_ok')({
+            submission_id: submissionId || null,
+            email,
+            url,
+            props: { bypass: true },
+        });
+        res.set('X-Turnstile', 'bypass');
+    } else {
+        t('captcha_ok')({ submission_id: submissionId || null, email, url });
+        res.set('X-Turnstile', 'ok');
+    }
 
     console.log('[turnstile]', {
         ok: okTs,
+        bypass: TURNSTILE_BYPASS,
         hasToken: !!tsToken,
         ip: remoteip,
         ua: req.headers['user-agent'],
