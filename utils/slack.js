@@ -46,7 +46,7 @@ async function sendAuditSlackNotification({
                 `> *Name:* ${safe(name)}\n` +
                 `> *Email:* ${safe(email)}\n` +
                 `> *Phone number:* ${safe(phone)}\n` +
-                `> *Listing URL:* ${safe(url)}\n` +
+                `> *Listing:* <${safe(url)}|Open listing>\n` +
                 `> *Created on:* <!date^${ts}^{date_num} {time}|${new Date().toISOString()}>`,
         },
     };
@@ -80,7 +80,12 @@ async function sendAuditSlackNotification({
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json; charset=utf-8',
         },
-        body: JSON.stringify({ channel, blocks }),
+        body: JSON.stringify({
+            channel,
+            blocks,
+            unfurl_links: false,
+            unfurl_media: false,
+        }),
     });
     const data = await res.json();
 
