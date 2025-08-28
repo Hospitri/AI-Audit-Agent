@@ -67,11 +67,15 @@ async function upsertPerson({ name, email, phone }) {
 
     const resp = await attioPut(url, payload, params);
     const recordId = resp?.data?.data?.id?.record_id || null;
+    const webUrl = resp?.data?.data?.web_url || null;
 
     if (!recordId) {
-        console.warn('[attio] upsert ok pero no vino record_id', resp?.data);
+        console.warn('[attio] upsert ok but no record_id found', resp?.data);
     }
-    return recordId;
+    if (!webUrl) {
+        console.warn('[attio] upsert ok but no webUrl found', resp?.data);
+    }
+    return { recordId, webUrl };
 }
 
 async function addToAuditList(recordId) {

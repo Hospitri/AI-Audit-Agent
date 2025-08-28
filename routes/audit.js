@@ -17,6 +17,7 @@ const { acquire } = require('../utils/concurrency');
 const { upsertPerson, addToAuditList } = require('../utils/attio');
 const { t } = require('../utils/metrics');
 const { normalizePhoneE164 } = require('../utils/phone');
+const { sendAuditSlackNotification } = require('../utils/slack');
 
 function ipLimiterOrBypass(req, res, next) {
     const ua = (req.headers['user-agent'] || '').toLowerCase();
@@ -257,7 +258,11 @@ router.post('/', async (req, res) => {
             }
 
             try {
-                const recordId = await upsertPerson({ name, email, phone });
+                const { recordId, webUrl } = await upsertPerson({
+                    name,
+                    email,
+                    phone,
+                });
                 if (recordId) await addToAuditList(recordId);
                 t('attio_ok')({
                     submission_id: submissionId || null,
@@ -265,6 +270,21 @@ router.post('/', async (req, res) => {
                     url,
                 });
                 console.log('[attio] synced', { email });
+
+                const phoneDisplay = (phone || '').replace(/\s+/g, ' ').trim();
+                await sendAuditSlackNotification({
+                    name,
+                    email,
+                    phone: phoneDisplay,
+                    url,
+                    attioUrl: webUrl || null,
+                    firstName,
+                });
+                t('slack_ok')({
+                    submission_id: submissionId || null,
+                    email,
+                    url,
+                });
             } catch (attioErr) {
                 t('attio_err')({
                     submission_id: submissionId || null,
@@ -275,7 +295,7 @@ router.post('/', async (req, res) => {
                     },
                 });
                 console.error(
-                    '[attio] sync failed',
+                    '[attio/slack] failed',
                     attioErr?.response?.data || attioErr
                 );
             }
