@@ -1,5 +1,22 @@
 const { fetch } = require('undici');
 
+function formatDatePR(date = new Date()) {
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/Puerto_Rico',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).formatToParts(date);
+
+    const get = t => parts.find(p => p.type === t)?.value || '';
+    return `${get('month')}/${get('day')}/${get('year')} ${get('hour')}:${get(
+        'minute'
+    )}`;
+}
+
 function safe(str) {
     if (!str) return '—';
     return String(str).trim();
@@ -47,7 +64,7 @@ async function sendAuditSlackNotification({
                 `> *Email:* ${safe(email)}\n` +
                 `> *Phone number:* ${safe(phone)}\n` +
                 `> *Listing:* <${safe(url)}|Open listing>\n` +
-                `> *Created on:* <!date^${ts}^{date_num} {time}|${new Date().toISOString()}>`,
+                `> *Created on:* ${formatDatePR(new Date())}`,
         },
     };
 
