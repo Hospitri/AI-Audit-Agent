@@ -4,7 +4,7 @@ const path = require('path');
 const { Pool } = require('pg');
 
 const sql = fs.readFileSync(
-    path.resolve(__dirname, '../db/migrations/002_metrics.sql'),
+    path.resolve(__dirname, '../db/migrations/003_demo_reminders.sql'),
     'utf8'
 );
 
