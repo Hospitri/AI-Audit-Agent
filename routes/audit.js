@@ -72,6 +72,11 @@ body{font-family:Arial,sans-serif;margin:32px}pre{white-space:pre-wrap}
 </body></html>`;
 
 router.post('/', async (req, res) => {
+    console.log('Incoming audit request', {
+        ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+        ua: req.headers['user-agent'] || '',
+        body: req.body,
+    });
     const TURNSTILE_BYPASS = process.env.TURNSTILE_BYPASS === '1';
     const tsToken =
         req.body?.['cf-turnstile-response'] || req.body?.turnstileToken;
