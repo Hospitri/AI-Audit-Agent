@@ -25,8 +25,8 @@ function ipLimiterOrBypass(req, res, next) {
     return ipBurstLimiter(req, res, next);
 }
 
-router.use(ipLimiterOrBypass);
-router.use(emailDayLimiter);
+// router.use(ipLimiterOrBypass);
+// router.use(emailDayLimiter);
 
 const seen = new Map();
 const TTL_MS = 10 * 60 * 1000;
