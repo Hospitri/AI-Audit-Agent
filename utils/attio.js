@@ -42,7 +42,7 @@ async function attioPut(url, data, params) {
     throw lastErr;
 }
 
-async function upsertPerson({ name, email, phone }) {
+async function upsertPerson({ name, email, phone, listing_url }) {
     if (!process.env.ATTIO_API_KEY) {
         console.warn('[attio] missing ATTIO_API_KEY; skipping');
         return null;
@@ -58,6 +58,7 @@ async function upsertPerson({ name, email, phone }) {
                 source: process.env.ATTIO_SOURCE_WEBSITE_FORM_ID,
                 source_url: 'https://hospitri.com/ai-audit',
                 ...(phone ? { phone_numbers: [phone] } : {}),
+                ...(listing_url ? { listing_url: String(listing_url) } : {}),
             },
         },
     };

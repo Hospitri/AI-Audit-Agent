@@ -267,6 +267,7 @@ router.post('/', async (req, res) => {
                     name,
                     email,
                     phone,
+                    listing_url: url,
                 });
                 if (recordId) await addToAuditList(recordId);
                 t('attio_ok')({
