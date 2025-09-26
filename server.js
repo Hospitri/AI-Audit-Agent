@@ -7,10 +7,12 @@ require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
 const auditRouter = require('./routes/audit');
+const hashPii = require('./routes/hash-pii');
 
 const app = express();
 app.use(bodyParser.json());
 app.use('/api/audit', auditRouter);
+app.use('/api/hash-pii', hashPii);
 
 process.on('SIGTERM', () =>
     console.log('[lifecycle] SIGTERM (Railway stopping container)')
