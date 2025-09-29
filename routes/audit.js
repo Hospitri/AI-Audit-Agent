@@ -18,6 +18,10 @@ const { upsertPerson, addToAuditList } = require('../utils/attio');
 const { t } = require('../utils/metrics');
 const { normalizePhoneE164 } = require('../utils/phone');
 const { sendAuditSlackNotification } = require('../utils/slack');
+const {
+    sha256HexNorm,
+    sendConversionEvent,
+} = require('../utils/facebook-capi');
 
 function ipLimiterOrBypass(req, res, next) {
     const ua = (req.headers['user-agent'] || '').toLowerCase();
@@ -110,6 +114,48 @@ router.post('/', async (req, res) => {
         url,
         props: { ua: req.headers['user-agent'] || '', ip: remoteip || '' },
     });
+
+    (async () => {
+        try {
+            const hashed = {
+                ...(email ? { em: sha256HexNorm(email) } : {}),
+                ...(phone ? { ph: sha256HexNorm(phone) } : {}),
+                ...(firstName ? { fn: sha256HexNorm(firstName) } : {}),
+                // si querés enviar last name:
+                // ...(lastName ? { ln: sha256HexNorm(lastName) } : {}),
+            };
+
+            // custom_data: enviamos listing url y submission id
+            const customData = {
+                listing_url: url || null,
+                submission_id: submissionId || null,
+            };
+
+            const fbResp = await sendConversionEvent({
+                pixelId: process.env.FB_PIXEL_ID,
+                accessToken: process.env.FB_ACCESS_TOKEN,
+                apiVersion: process.env.FB_API_VERSION || 'v21.0',
+                testEventCode: process.env.FB_TEST_EVENT_CODE || null,
+                eventName: 'Lead',
+                eventTime: Math.floor(Date.now() / 1000),
+                userData: hashed,
+                customData,
+                eventId:
+                    submissionId ||
+                    crypto.randomUUID?.() ||
+                    `audit-${Date.now()}`,
+            });
+
+            console.log('[fb-capi] sent', fbResp);
+            t('fb_capi_ok')({ submission_id: submissionId || null });
+        } catch (err) {
+            console.warn('[fb-capi] failed', err?.message || err);
+            t('fb_capi_err')({
+                submission_id: submissionId || null,
+                props: { error: err?.raw || err?.message },
+            });
+        }
+    })();
 
     if (TURNSTILE_BYPASS) {
         t('captcha_ok')({
