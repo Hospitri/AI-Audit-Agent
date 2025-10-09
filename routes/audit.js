@@ -18,6 +18,7 @@ const { upsertPerson, addToAuditList } = require('../utils/attio');
 const { t } = require('../utils/metrics');
 const { normalizePhoneE164 } = require('../utils/phone');
 const { sendAuditSlackNotification } = require('../utils/slack');
+const { appendRowViaAppsScript } = require('../utils/google-sheets');
 const {
     sha256HexNorm,
     sendConversionEvent,
@@ -121,11 +122,8 @@ router.post('/', async (req, res) => {
                 ...(email ? { em: sha256HexNorm(email) } : {}),
                 ...(phone ? { ph: sha256HexNorm(phone) } : {}),
                 ...(firstName ? { fn: sha256HexNorm(firstName) } : {}),
-                // si querés enviar last name:
-                // ...(lastName ? { ln: sha256HexNorm(lastName) } : {}),
             };
 
-            // custom_data: enviamos listing url y submission id
             const customData = {
                 listing_url: url || null,
                 submission_id: submissionId || null,
@@ -197,6 +195,7 @@ router.post('/', async (req, res) => {
         const release = await acquire();
         const startedAt = Date.now();
         try {
+            await appendRowViaAppsScript({ name, email, phone, url });
             const s0 = Date.now();
             const htmlSrc = await scrapePage(url);
             t('scrape_ok')({

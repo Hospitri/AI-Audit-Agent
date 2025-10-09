@@ -29,6 +29,7 @@
     "ejs": "^3.1.10",
     "express": "^5.1.0",
     "form-data": "^4.0.4",
+    "googleapis": "^161.0.0",
     "json5": "^2.2.3",
     "libphonenumber-js": "^1.12.13",
     "mailersend": "^2.6.0",
