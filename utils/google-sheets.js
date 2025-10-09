@@ -1,4 +1,3 @@
-const fetch = require('node-fetch');
 async function appendRowViaAppsScript({ name, email, phone, url }) {
     const ENDPOINT = process.env.GAS_ENDPOINT_URL;
     const SECRET = process.env.GAS_SECRET;
