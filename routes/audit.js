@@ -99,6 +99,12 @@ router.post('/', async (req, res) => {
     if (!isValidUrl(url))
         return res.status(400).json({ error: 'invalid or unsupported URL' });
 
+    let firstName = '';
+    let lastName = '';
+    const nameSplit = (name || '').trim().split(/\s+/);
+    if (nameSplit.length > 0) firstName = nameSplit[0];
+    if (nameSplit.length > 1) lastName = nameSplit[nameSplit.length - 1];
+
     const okTs = TURNSTILE_BYPASS
         ? true
         : await verifyTurnstile(tsToken, remoteip);
@@ -122,6 +128,7 @@ router.post('/', async (req, res) => {
                 ...(email ? { em: sha256HexNorm(email) } : {}),
                 ...(phone ? { ph: sha256HexNorm(phone) } : {}),
                 ...(firstName ? { fn: sha256HexNorm(firstName) } : {}),
+                ...(lastName ? { ln: sha256HexNorm(lastName) } : {}),
             };
 
             const customData = {
@@ -177,10 +184,6 @@ router.post('/', async (req, res) => {
     });
 
     console.log('Framer submission id:', submissionId);
-
-    let firstName = '';
-    const nameSplit = (name || '').split(' ');
-    if (nameSplit.length > 1) firstName = nameSplit[0];
 
     const key = getIdempotencyKey(req);
     if (seen.has(key)) {
