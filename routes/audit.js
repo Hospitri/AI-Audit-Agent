@@ -198,7 +198,29 @@ router.post('/', async (req, res) => {
         const release = await acquire();
         const startedAt = Date.now();
         try {
-            await appendRowViaAppsScript({ name, email, phone, url });
+            try {
+                const gsResp = await appendRowViaAppsScript({
+                    name,
+                    email,
+                    phone,
+                    url,
+                });
+                if (!gsResp || gsResp.ok === false) {
+                    console.warn('[google-sheets] append failed', gsResp);
+                    t('gs_append_err')({
+                        submission_id: submissionId || null,
+                        props: gsResp,
+                    });
+                } else {
+                    t('gs_append_ok')({ submission_id: submissionId || null });
+                }
+            } catch (e) {
+                console.error('[google-sheets] append exception', e);
+                t('gs_append_err')({
+                    submission_id: submissionId || null,
+                    props: { error: e?.message || e },
+                });
+            }
             const s0 = Date.now();
             const htmlSrc = await scrapePage(url);
             t('scrape_ok')({
