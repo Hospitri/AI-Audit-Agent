@@ -8,11 +8,13 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const auditRouter = require('./routes/audit');
 const hashPii = require('./routes/hash-pii');
+const slackRoutes = require('./routes/slack-routes');
 
 const app = express();
 app.use(bodyParser.json());
 app.use('/api/audit', auditRouter);
 app.use('/api/hash-pii', hashPii);
+app.use('/slack', slackRoutes);
 
 process.on('SIGTERM', () =>
     console.log('[lifecycle] SIGTERM (Railway stopping container)')
