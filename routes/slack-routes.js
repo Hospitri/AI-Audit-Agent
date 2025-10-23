@@ -2,6 +2,10 @@ const express = require('express');
 const crypto = require('crypto');
 const { WebClient } = require('@slack/web-api');
 const bodyParser = require('body-parser');
+const {
+    createNotionTicket,
+    updateNotionTicketWithThread,
+} = require('../utils/notion-escalations.js');
 
 const router = express.Router();
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
