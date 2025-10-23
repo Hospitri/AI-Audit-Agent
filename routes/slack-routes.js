@@ -133,16 +133,17 @@ router.post(
 
 router.post(
     '/commands',
-    bodyParser.urlencoded({ extended: true }),
+    bodyParser.raw({ type: 'application/x-www-form-urlencoded' }),
     async (req, res) => {
         try {
-            const raw = Object.entries(req.body)
-                .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
-                .join('&');
-            if (!verifySlackSignature(raw, req))
-                return res.status(400).send('invalid signature');
+            const raw = req.body.toString('utf8');
 
-            const { command, text, user_id, trigger_id } = req.body;
+            if (!verifySlackSignature(raw, req)) {
+                return res.status(400).send('invalid signature');
+            }
+
+            const params = Object.fromEntries(new URLSearchParams(raw));
+            const { command, text, user_id, trigger_id } = params;
 
             res.status(200).send();
 
@@ -152,113 +153,15 @@ router.post(
                 title: { type: 'plain_text', text: 'Create Escalation' },
                 submit: { type: 'plain_text', text: 'Submit' },
                 close: { type: 'plain_text', text: 'Cancel' },
-                blocks: [
-                    {
-                        type: 'input',
-                        block_id: 'booking',
-                        element: {
-                            type: 'plain_text_input',
-                            action_id: 'booking_ref',
-                        },
-                        label: {
-                            type: 'plain_text',
-                            text: 'Booking reference',
-                        },
-                    },
-                    {
-                        type: 'input',
-                        block_id: 'listing',
-                        element: {
-                            type: 'plain_text_input',
-                            action_id: 'listing_name',
-                        },
-                        label: { type: 'plain_text', text: 'Listing name' },
-                    },
-                    {
-                        type: 'input',
-                        block_id: 'guest',
-                        element: {
-                            type: 'plain_text_input',
-                            action_id: 'guest_name',
-                        },
-                        label: { type: 'plain_text', text: 'Guest name' },
-                    },
-                    {
-                        type: 'input',
-                        block_id: 'issue',
-                        element: {
-                            type: 'checkboxes',
-                            action_id: 'issue_type',
-                            options: [
-                                {
-                                    text: {
-                                        type: 'plain_text',
-                                        text: 'Access/Check-in',
-                                    },
-                                    value: 'access',
-                                },
-                                {
-                                    text: {
-                                        type: 'plain_text',
-                                        text: 'Cleanliness/Supplies',
-                                    },
-                                    value: 'clean',
-                                },
-                                {
-                                    text: {
-                                        type: 'plain_text',
-                                        text: 'Property condition',
-                                    },
-                                    value: 'condition',
-                                },
-                                {
-                                    text: {
-                                        type: 'plain_text',
-                                        text: 'Noise/Disturbances',
-                                    },
-                                    value: 'noise',
-                                },
-                                {
-                                    text: {
-                                        type: 'plain_text',
-                                        text: 'Reservation/OTA Issues',
-                                    },
-                                    value: 'reservation',
-                                },
-                                {
-                                    text: { type: 'plain_text', text: 'Other' },
-                                    value: 'other',
-                                },
-                            ],
-                        },
-                        label: { type: 'plain_text', text: 'Issue type' },
-                    },
-                    {
-                        type: 'input',
-                        block_id: 'summary',
-                        element: {
-                            type: 'plain_text_input',
-                            action_id: 'summary',
-                            multiline: true,
-                        },
-                        label: { type: 'plain_text', text: 'Summary' },
-                    },
-                    {
-                        type: 'input',
-                        block_id: 'assign',
-                        element: {
-                            type: 'multi_users_select',
-                            action_id: 'assignees',
-                        },
-                        label: { type: 'plain_text', text: 'Assign to' },
-                    },
-                ],
+                blocks: [],
             };
 
             await slack.views.open({ trigger_id, view });
         } catch (err) {
             console.error('slash error', err);
-            res.status(500).send();
+            try {
+                if (!res.headersSent) res.status(500).send();
+            } catch (e) {}
         }
     }
 );
