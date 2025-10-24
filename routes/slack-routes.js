@@ -153,7 +153,144 @@ router.post(
                 title: { type: 'plain_text', text: 'Create Escalation' },
                 submit: { type: 'plain_text', text: 'Submit' },
                 close: { type: 'plain_text', text: 'Cancel' },
-                blocks: [],
+                blocks: [
+                    {
+                        type: 'input',
+                        block_id: 'booking',
+                        element: {
+                            type: 'plain_text_input',
+                            action_id: 'booking_ref',
+                            placeholder: {
+                                type: 'plain_text',
+                                text: 'e.g. ABC123',
+                            },
+                        },
+                        label: {
+                            type: 'plain_text',
+                            text: 'Booking reference',
+                        },
+                    },
+                    {
+                        type: 'input',
+                        block_id: 'listing',
+                        element: {
+                            type: 'plain_text_input',
+                            action_id: 'listing_name',
+                            placeholder: {
+                                type: 'plain_text',
+                                text: 'Listing name',
+                            },
+                        },
+                        label: { type: 'plain_text', text: 'Listing name' },
+                    },
+                    {
+                        type: 'input',
+                        block_id: 'guest',
+                        element: {
+                            type: 'plain_text_input',
+                            action_id: 'guest_name',
+                            placeholder: {
+                                type: 'plain_text',
+                                text: 'Guest full name',
+                            },
+                        },
+                        label: { type: 'plain_text', text: 'Guest name' },
+                    },
+                    {
+                        type: 'input',
+                        block_id: 'issue',
+                        element: {
+                            type: 'checkboxes',
+                            action_id: 'issue_type',
+                            options: [
+                                {
+                                    text: {
+                                        type: 'plain_text',
+                                        text: 'Access/Check-in',
+                                    },
+                                    value: 'access',
+                                },
+                                {
+                                    text: {
+                                        type: 'plain_text',
+                                        text: 'Cleanliness/Supplies',
+                                    },
+                                    value: 'clean',
+                                },
+                                {
+                                    text: {
+                                        type: 'plain_text',
+                                        text: 'Property condition',
+                                    },
+                                    value: 'condition',
+                                },
+                                {
+                                    text: {
+                                        type: 'plain_text',
+                                        text: 'Noise/Disturbances',
+                                    },
+                                    value: 'noise',
+                                },
+                                {
+                                    text: {
+                                        type: 'plain_text',
+                                        text: 'Reservation/OTA Issues',
+                                    },
+                                    value: 'reservation',
+                                },
+                                {
+                                    text: { type: 'plain_text', text: 'Other' },
+                                    value: 'other',
+                                },
+                            ],
+                        },
+                        label: { type: 'plain_text', text: 'Issue type' },
+                    },
+                    {
+                        type: 'input',
+                        block_id: 'summary',
+                        element: {
+                            type: 'plain_text_input',
+                            action_id: 'summary',
+                            multiline: true,
+                            placeholder: {
+                                type: 'plain_text',
+                                text: 'Describe the issue and any immediate impact',
+                            },
+                        },
+                        label: { type: 'plain_text', text: 'Summary' },
+                    },
+                    {
+                        type: 'input',
+                        block_id: 'assign',
+                        element: {
+                            type: 'multi_users_select',
+                            action_id: 'assignees',
+                            placeholder: {
+                                type: 'plain_text',
+                                text: 'Select one or more users',
+                            },
+                        },
+                        label: { type: 'plain_text', text: 'Assign to' },
+                    },
+                    {
+                        type: 'input',
+                        optional: true,
+                        block_id: 'attachments_hint',
+                        element: {
+                            type: 'plain_text_input',
+                            action_id: 'attachments_hint',
+                            placeholder: {
+                                type: 'plain_text',
+                                text: 'Optional: paste URL(s) of attachments or leave instructions to upload in thread',
+                            },
+                        },
+                        label: {
+                            type: 'plain_text',
+                            text: 'Attachments (optional)',
+                        },
+                    },
+                ],
             };
 
             await slack.views.open({ trigger_id, view });
