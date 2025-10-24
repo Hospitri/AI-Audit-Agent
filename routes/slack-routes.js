@@ -43,82 +43,103 @@ router.post(
             if (!verifySlackSignature(raw, req))
                 return res.status(400).send('invalid signature');
 
-            const payload = JSON.parse(raw);
+            const params = new URLSearchParams(raw);
+            const payloadStr = params.get('payload');
+            if (!payloadStr) {
+                console.warn('[slack] interactivity: no payload param found');
+                return res.status(400).send('missing payload');
+            }
+
+            const payload = JSON.parse(payloadStr);
+
             if (
                 payload.type === 'view_submission' &&
-                payload.view.callback_id === 'escalation_modal'
+                payload.view?.callback_id === 'escalation_modal'
             ) {
                 res.status(200).json({ response_action: 'clear' });
 
-                const vals = payload.view.state.values;
-                const booking = vals.booking?.booking_ref?.value || null;
-                const listing = vals.listing?.listing_name?.value || null;
-                const guest = vals.guest?.guest_name?.value || null;
-                const summary = vals.summary?.summary?.value || null;
-                const issues = (
-                    vals.issue?.issue_type?.selected_options || []
-                ).map(o => o.value);
-                const assignees = vals.assign?.assignees?.selected_users || [];
-                const submittedBySlackId = payload.user?.id;
-
-                let notionResult;
-                try {
-                    notionResult = await createNotionTicket({
-                        booking,
-                        listing,
-                        guest,
-                        summary,
-                        issues,
-                        assignees,
-                        submittedBySlackId,
-                    });
-                } catch (err) {
-                    console.error('Notion create failed', err);
-                    return;
-                }
-
-                try {
-                    const channel = process.env.SLACK_ESCALATIONS_CHANNEL;
-                    const text = `:rotating_light: New escalation created by <@${submittedBySlackId}> — <${notionResult.url}|Open ticket in Notion>`;
-                    const postResp = await slack.chat.postMessage({
-                        channel,
-                        text,
-                    });
-
-                    const { ts, channel: postedChannel } = postResp;
-                    const permalinkResp =
-                        await slack.conversations.getPermalink({
-                            channel: postedChannel,
-                            message_ts: ts,
-                        });
-                    const threadUrl = permalinkResp?.permalink || null;
-
-                    if (threadUrl) {
-                        try {
-                            await updateNotionTicketWithThread(
-                                notionResult.id,
-                                { thread_url: threadUrl }
-                            );
-                        } catch (err) {
-                            console.warn(
-                                'Failed to update notion with thread_url',
-                                err
-                            );
-                        }
-                    }
-
+                (async () => {
                     try {
-                        await slack.reactions.add({
-                            name: 'white_check_mark',
-                            channel: postedChannel,
-                            timestamp: ts,
-                        });
+                        const vals = payload.view.state.values;
+                        const booking =
+                            vals.booking?.booking_ref?.value || null;
+                        const listing =
+                            vals.listing?.listing_name?.value || null;
+                        const guest = vals.guest?.guest_name?.value || null;
+                        const summary = vals.summary?.summary?.value || null;
+                        const issues = (
+                            vals.issue?.issue_type?.selected_options || []
+                        ).map(o => o.value);
+                        const assignees =
+                            vals.assign?.assignees?.selected_users || [];
+                        const submittedBySlackId = payload.user?.id;
+
+                        let notionResult;
+                        try {
+                            notionResult = await createNotionTicket({
+                                booking,
+                                listing,
+                                guest,
+                                summary,
+                                issues,
+                                assignees,
+                                submittedBySlackId,
+                            });
+                        } catch (err) {
+                            console.error('Notion create failed', err);
+                            return;
+                        }
+
+                        try {
+                            const channel =
+                                process.env.SLACK_ESCALATIONS_CHANNEL;
+                            const text = `:rotating_light: New escalation created by <@${submittedBySlackId}> — <${notionResult.url}|Open ticket in Notion>`;
+                            const postResp = await slack.chat.postMessage({
+                                channel,
+                                text,
+                            });
+                            const { ts, channel: postedChannel } = postResp;
+
+                            const permalinkResp =
+                                await slack.conversations.getPermalink({
+                                    channel: postedChannel,
+                                    message_ts: ts,
+                                });
+                            const threadUrl = permalinkResp?.permalink || null;
+
+                            if (threadUrl) {
+                                try {
+                                    await updateNotionTicketWithThread(
+                                        notionResult.id,
+                                        { thread_url: threadUrl }
+                                    );
+                                } catch (err) {
+                                    console.warn(
+                                        'Failed to update notion with thread_url',
+                                        err
+                                    );
+                                }
+                            }
+
+                            try {
+                                await slack.reactions.add({
+                                    name: 'white_check_mark',
+                                    channel: postedChannel,
+                                    timestamp: ts,
+                                });
+                            } catch (err) {
+                                console.warn('Could not add reaction', err);
+                            }
+                        } catch (err) {
+                            console.error('Slack postMessage failed', err);
+                        }
                     } catch (err) {
-                        console.warn('Could not add reaction', err);
+                        console.error(
+                            'Async background interactivity error',
+                            err
+                        );
                     }
-                } catch (err) {
-                    console.error('Slack postMessage failed', err);
-                }
+                })();
 
                 return;
             }
@@ -126,7 +147,9 @@ router.post(
             res.status(200).send();
         } catch (err) {
             console.error('Interactivity endpoint error', err);
-            res.status(500).send();
+            try {
+                res.status(500).send();
+            } catch (e) {}
         }
     }
 );
