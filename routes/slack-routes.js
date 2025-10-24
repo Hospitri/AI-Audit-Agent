@@ -40,8 +40,18 @@ router.post(
     async (req, res) => {
         try {
             const raw = req.body.toString('utf8');
-            if (!verifySlackSignature(raw, req))
+            console.log('[slack/interactivity] rawLen=', raw.length);
+            console.log('[slack/interactivity] headers:', {
+                ts: req.headers['x-slack-request-timestamp'],
+                sig: req.headers['x-slack-signature'],
+            });
+            if (!verifySlackSignature(raw, req)) {
+                console.warn(
+                    '[slack/interactivity] signature verification failed'
+                );
+                console.warn('computed vs slack:', computed, sig);
                 return res.status(400).send('invalid signature');
+            }
 
             const params = new URLSearchParams(raw);
             const payloadStr = params.get('payload');
@@ -50,7 +60,13 @@ router.post(
                 return res.status(400).send('missing payload');
             }
 
-            const payload = JSON.parse(payloadStr);
+            const payload = JSON.parse(raw);
+            console.log(
+                '[slack/interactivity] payload.type=',
+                payload.type,
+                'callback_id=',
+                payload.view?.callback_id
+            );
 
             if (
                 payload.type === 'view_submission' &&
@@ -146,10 +162,8 @@ router.post(
 
             res.status(200).send();
         } catch (err) {
-            console.error('Interactivity endpoint error', err);
-            try {
-                res.status(500).send();
-            } catch (e) {}
+            console.error('[slack/interactivity] verify error', err);
+            return res.status(400).send('invalid signature');
         }
     }
 );
