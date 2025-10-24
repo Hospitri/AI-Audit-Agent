@@ -92,6 +92,18 @@ router.post(
 
                         let notionResult;
                         try {
+                            console.log(
+                                '[slack] creating notion ticket with:',
+                                {
+                                    booking,
+                                    listing,
+                                    guest,
+                                    summary,
+                                    issues,
+                                    assignees,
+                                    submittedBySlackId,
+                                }
+                            );
                             notionResult = await createNotionTicket({
                                 booking,
                                 listing,
@@ -101,8 +113,25 @@ router.post(
                                 assignees,
                                 submittedBySlackId,
                             });
+                            console.log(
+                                '[slack] createNotionTicket returned:',
+                                notionResult
+                            );
+                            if (!notionResult || !notionResult.id) {
+                                console.warn(
+                                    '[slack] createNotionTicket returned no id, result:',
+                                    notionResult
+                                );
+                            }
                         } catch (err) {
-                            console.error('Notion create failed', err);
+                            console.error('[slack] Notion create failed ->', {
+                                message: err?.message,
+                                stack: err?.stack,
+                                response:
+                                    err?.response?.body ||
+                                    err?.response ||
+                                    null,
+                            });
                             return;
                         }
 

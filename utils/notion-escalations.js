@@ -128,7 +128,17 @@ async function createNotionTicket(data = {}) {
     if (!dbIdRaw) throw new Error('NOTION_ESCALATIONS_DB_ID not set');
     const dbId = normalizeDbId(dbIdRaw);
 
-    const db = await notion.databases.retrieve({ database_id: dbId });
+    let db;
+    try {
+        db = await notion.databases.retrieve({ database_id: dbId });
+    } catch (err) {
+        console.error('[notion] failed to retrieve database:', {
+            dbId,
+            errMessage: err?.message,
+            errBody: err?.body || err?.response || null,
+        });
+        throw err;
+    }
     const dbProps = db.properties || {};
 
     const properties = buildPropertyPayload(dbProps, data);
@@ -139,12 +149,28 @@ async function createNotionTicket(data = {}) {
         };
     }
 
-    const page = await notion.pages.create({
+    const payload = {
         parent: { database_id: dbId },
         properties,
+    };
+
+    console.log('[notion] creating page, payload sample:', {
+        dbId,
+        propertiesSent: Object.keys(properties),
     });
 
-    return { id: page.id, url: page.url };
+    try {
+        const page = await notion.pages.create(payload);
+        console.log('[notion] page created:', { id: page.id, url: page.url });
+        return { id: page.id, url: page.url };
+    } catch (err) {
+        console.error('[notion] pages.create failed:', {
+            message: err?.message,
+            status: err?.status,
+            body: err?.body || err?.response || null,
+        });
+        throw err;
+    }
 }
 
 async function updateNotionTicketWithThread(pageId, fields = {}) {
