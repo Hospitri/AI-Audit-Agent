@@ -22,45 +22,47 @@ function buildPropertyPayload(dbProperties, values = {}) {
     } = values;
 
     const props = {};
-
     const prop = name => dbProperties[name] || null;
 
-    const titleProp = prop('Listing') || prop('Title') || prop('Name');
-    if (titleProp) {
-        props[titleProp.name || 'Listing'] = {
-            title: [{ text: { content: listing || 'No listing' } }],
-        };
-    } else {
-        props['Listing'] = {
-            rich_text: [{ text: { content: listing || 'No listing' } }],
-        };
-    }
-
-    const bookingProp =
-        prop('Booking reference') ||
-        prop('Booking') ||
-        prop('Booking Reference');
-    if (bookingProp) {
-        if (bookingProp.type === 'rich_text') {
-            props[bookingProp.name] = {
-                rich_text: [{ text: { content: booking || '' } }],
+    const listingProp = prop('Listing');
+    if (listingProp) {
+        if (listingProp.type === 'title') {
+            props[listingProp.name] = {
+                title: [{ text: { content: listing || 'No listing' } }],
             };
-        } else if (bookingProp.type === 'title') {
-            props[bookingProp.name] = {
-                title: [{ text: { content: booking || '' } }],
-            };
-        } else {
-            props[bookingProp.name] = {
-                rich_text: [{ text: { content: booking || '' } }],
+        } else if (listingProp.type === 'rich_text') {
+            props[listingProp.name] = {
+                rich_text: [{ text: { content: listing || 'No listing' } }],
             };
         }
     }
 
-    const guestProp = prop('Guest') || prop('Guest name') || prop('Guest Name');
-    if (guestProp)
-        props[guestProp.name] = {
-            rich_text: [{ text: { content: guest || '' } }],
-        };
+    const bookingProp = prop('Booking reference');
+    if (bookingProp) {
+        if (bookingProp.type === 'rich_text')
+            props[bookingProp.name] = {
+                rich_text: [{ text: { content: booking || '' } }],
+            };
+        else if (bookingProp.type === 'title')
+            props[bookingProp.name] = {
+                title: [{ text: { content: booking || '' } }],
+            };
+    }
+
+    const guestProp = prop('Guest');
+    if (guestProp) {
+        if (guestProp.type === 'multi_select') {
+            props[guestProp.name] = {
+                multi_select: (guest || '')
+                    .split(',')
+                    .map(g => ({ name: g.trim() })),
+            };
+        } else {
+            props[guestProp.name] = {
+                rich_text: [{ text: { content: guest || '' } }],
+            };
+        }
+    }
 
     const summaryProp = prop('Summary');
     if (summaryProp)
@@ -68,39 +70,40 @@ function buildPropertyPayload(dbProperties, values = {}) {
             rich_text: [{ text: { content: summary || '' } }],
         };
 
-    const issuesProp =
-        prop('Issue type') || prop('Issue Type') || prop('Issue');
+    const issuesProp = prop('Issue type');
     if (issuesProp) {
-        if (
-            issuesProp.type === 'multi_select' ||
-            issuesProp.type === 'select'
-        ) {
+        if (issuesProp.type === 'multi_select') {
             props[issuesProp.name] = {
-                multi_select: issues.map(i => ({ name: String(i) })),
+                multi_select: issues.map(i => ({ name: i })),
             };
         } else {
             props[issuesProp.name] = {
-                rich_text: [{ text: { content: (issues || []).join(', ') } }],
+                rich_text: [{ text: { content: issues.join(', ') } }],
             };
         }
     }
 
-    const assignProp =
-        prop('Assigned To') || prop('Assigned') || prop('Assignee');
+    const assignProp = prop('Assigned To');
     if (assignProp) {
         if (assignProp.type === 'people') {
             props[assignProp.name] = {
-                rich_text: [{ text: { content: assignees.join(', ') } }],
+                people: [],
+            };
+            props['Assignee (Slack IDs)'] = {
+                rich_text: [
+                    { text: { content: assignees.join(', ') || 'N/A' } },
+                ],
             };
         } else {
             props[assignProp.name] = {
-                rich_text: [{ text: { content: assignees.join(', ') } }],
+                rich_text: [
+                    { text: { content: assignees.join(', ') || 'N/A' } },
+                ],
             };
         }
     }
 
-    const subProp =
-        prop('Submitted by') || prop('Submitted_by') || prop('Submitted');
+    const subProp = prop('Submitted by');
     if (subProp)
         props[subProp.name] = {
             rich_text: [
@@ -108,16 +111,23 @@ function buildPropertyPayload(dbProperties, values = {}) {
             ],
         };
 
-    const threadProp =
-        prop('Thread URL') || prop('Thread_URL') || prop('Thread');
-    if (threadProp) {
-    }
-
-    const attProp = prop('Attachments') || prop('Attachment');
+    const attProp = prop('Attachments');
     if (attProp) {
-        props[attProp.name] = {
-            rich_text: [{ text: { content: (attachments || []).join(', ') } }],
-        };
+        if (attProp.type === 'files') {
+            props[attProp.name] = {
+                files: attachments.map(url => ({
+                    name: url.split('/').pop(),
+                    type: 'external',
+                    external: { url },
+                })),
+            };
+        } else {
+            props[attProp.name] = {
+                rich_text: [
+                    { text: { content: (attachments || []).join(', ') } },
+                ],
+            };
+        }
     }
 
     return props;
