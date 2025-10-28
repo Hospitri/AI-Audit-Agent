@@ -125,11 +125,42 @@ router.post(
                                     vals.attachments_block.attachments
                                         .selected_files;
                                 for (const f of files) {
-                                    const info = await slack.files.info({
-                                        file: f.id,
-                                    });
-                                    if (info?.file?.url_private)
-                                        attachments.push(info.file.url_private);
+                                    try {
+                                        try {
+                                            await slack.files.sharedPublicURL({
+                                                file: f.id,
+                                            });
+                                        } catch (e) {
+                                            console.warn(
+                                                '[slack] files.sharedPublicURL failed for',
+                                                f.id,
+                                                e?.message || e
+                                            );
+                                        }
+
+                                        const info = await slack.files.info({
+                                            file: f.id,
+                                        });
+                                        const publicUrl =
+                                            info?.file?.permalink_public ||
+                                            info?.file?.url_private_download ||
+                                            info?.file?.url_private;
+                                        if (publicUrl) {
+                                            attachments.push({
+                                                id: f.id,
+                                                name:
+                                                    info.file?.name ||
+                                                    publicUrl.split('/').pop(),
+                                                url: publicUrl,
+                                            });
+                                        }
+                                    } catch (err) {
+                                        console.warn(
+                                            '[slack] failed fetching file info for',
+                                            f.id,
+                                            err?.message || err
+                                        );
+                                    }
                                 }
                             }
 
@@ -141,7 +172,7 @@ router.post(
                                 issues,
                                 assignees,
                                 submittedBySlackId,
-                                attachments,
+                                attachments: attachments.map(a => a.url),
                             });
                             console.log(
                                 '[slack] createNotionTicket returned:',
@@ -168,25 +199,29 @@ router.post(
                         try {
                             const channel =
                                 process.env.SLACK_ESCALATIONS_CHANNEL;
-                            const text = `:rotating_light: *New Escalation Submitted*
-                                *Booking reference:* ${booking || '-'}
-                                *Listing:* ${listing || '-'}
-                                *Guest:* ${guest || '-'}
-                                *Issue type:* ${
+                            const text = [
+                                ':rotating_light: *New Escalation Submitted*',
+                                `*Booking reference:* ${booking || '-'}`,
+                                `*Listing:* ${listing || '-'}`,
+                                `*Guest:* ${guest || '-'}`,
+                                `*Issue type:* ${
                                     (issues || []).join(', ') || '-'
-                                }
-                                *Summary:*
-                                ${summary || '-'}
-                                ––––––––––––––––––––––––––––––––––––––––
-                                *Assigned to:* ${
+                                }`,
+                                `*Summary:*`,
+                                `${summary || '-'}`,
+                                '––––––––––––––––––––––––––––––––––––––––',
+                                `*Assigned to:* ${
                                     assignees
                                         .map(id => `<@${id}>`)
                                         .join(', ') || '-'
-                                }
-                                *Submitted by:* <@${submittedBySlackId}>
-                                <${notionResult.url}|Open ticket in Notion>
-
-                                Please reply to this message in thread with any relevant update.`;
+                                }`,
+                                `*Submitted by:* <@${submittedBySlackId}>`,
+                                `<${notionResult.url}|Open ticket in Notion>`,
+                                '',
+                                'Please reply to this message in thread with any relevant update.',
+                            ]
+                                .join('\n')
+                                .trim();
 
                             const postResp = await slack.chat.postMessage({
                                 channel,
