@@ -126,41 +126,24 @@ router.post(
                                         .selected_files;
                                 for (const f of files) {
                                     try {
-                                        try {
-                                            await slack.files.sharedPublicURL({
-                                                file: f.id,
-                                            });
-                                        } catch (e) {
-                                            console.warn(
-                                                '[slack] files.sharedPublicURL failed for',
-                                                f.id,
-                                                e?.message || e
-                                            );
-                                        }
-
-                                        const info = await slack.files.info({
+                                        await slack.files.sharedPublicURL({
                                             file: f.id,
                                         });
-                                        const publicUrl =
-                                            info?.file?.permalink_public ||
-                                            info?.file?.url_private_download ||
-                                            info?.file?.url_private;
-                                        if (publicUrl) {
-                                            attachments.push({
-                                                id: f.id,
-                                                name:
-                                                    info.file?.name ||
-                                                    publicUrl.split('/').pop(),
-                                                url: publicUrl,
-                                            });
-                                        }
-                                    } catch (err) {
+                                    } catch (e) {
                                         console.warn(
-                                            '[slack] failed fetching file info for',
-                                            f.id,
-                                            err?.message || err
+                                            'files.sharedPublicURL failed (may require permissions):',
+                                            e?.message
                                         );
                                     }
+
+                                    const info = await slack.files.info({
+                                        file: f.id,
+                                    });
+                                    const publicUrl =
+                                        info?.file?.permalink_public ||
+                                        info?.file?.url_private_download ||
+                                        info?.file?.url_private;
+                                    if (publicUrl) attachments.push(publicUrl);
                                 }
                             }
 

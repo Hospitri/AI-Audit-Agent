@@ -83,17 +83,20 @@ function buildPropertyPayload(dbProperties, values = {}) {
         }
     }
 
-    const assignProp = prop('Assigned To');
+    const assignProp =
+        prop('Assigned To') || prop('Assigned') || prop('Assignee');
+    const slackAssigneeTextProp =
+        prop('Assignee (Slack IDs)') || prop('Assignee Slack') || null;
     if (assignProp) {
         if (assignProp.type === 'people') {
-            props[assignProp.name] = {
-                people: [],
-            };
-            props['Assignee (Slack IDs)'] = {
-                rich_text: [
-                    { text: { content: assignees.join(', ') || 'N/A' } },
-                ],
-            };
+            props[assignProp.name] = { people: [] };
+            if (slackAssigneeTextProp) {
+                props[slackAssigneeTextProp.name] = {
+                    rich_text: [
+                        { text: { content: assignees.join(', ') || 'N/A' } },
+                    ],
+                };
+            }
         } else {
             props[assignProp.name] = {
                 rich_text: [
@@ -103,15 +106,21 @@ function buildPropertyPayload(dbProperties, values = {}) {
         }
     }
 
-    const subProp = prop('Submitted by');
-    if (subProp)
-        props[subProp.name] = {
-            rich_text: [
-                { text: { content: String(submittedBySlackId || '') } },
-            ],
-        };
+    const subProp =
+        prop('Submitted by') || prop('Submitted_by') || prop('Submitted');
+    if (subProp) {
+        if (subProp.type === 'people') {
+            props[subProp.name] = { people: [] };
+        } else {
+            props[subProp.name] = {
+                rich_text: [
+                    { text: { content: String(submittedBySlackId || '') } },
+                ],
+            };
+        }
+    }
 
-    const attProp = prop('Attachments');
+    const attProp = prop('Attachments') || prop('Attachment');
     if (attProp) {
         if (attProp.type === 'files') {
             props[attProp.name] = {
