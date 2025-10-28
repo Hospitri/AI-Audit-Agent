@@ -49,7 +49,9 @@ router.post(
                 console.warn(
                     '[slack/interactivity] signature verification failed'
                 );
-                console.warn('computed vs slack:', computed, sig);
+                console.warn(
+                    '[slack/interactivity] signature verification failed'
+                );
                 return res.status(400).send('invalid signature');
             }
 
@@ -60,7 +62,16 @@ router.post(
                 return res.status(400).send('missing payload');
             }
 
-            const payload = JSON.parse(raw);
+            let payload;
+            try {
+                payload = JSON.parse(payloadStr);
+            } catch (err) {
+                console.error(
+                    '[slack/interactivity] failed to parse payload JSON',
+                    err
+                );
+                return res.status(400).send('bad payload');
+            }
             console.log(
                 '[slack/interactivity] payload.type=',
                 payload.type,
