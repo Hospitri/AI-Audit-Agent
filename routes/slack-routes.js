@@ -212,11 +212,13 @@ router.post(
                             });
                             const { ts, channel: postedChannel } = postResp;
 
-                            const permalinkResp =
-                                await slack.conversations.getPermalink({
+                            const permalinkResp = await slack.chat.getPermalink(
+                                {
                                     channel: postedChannel,
                                     message_ts: ts,
-                                });
+                                }
+                            );
+
                             const threadUrl = permalinkResp?.permalink || null;
 
                             if (threadUrl) {
@@ -409,18 +411,16 @@ router.post(
                     {
                         type: 'input',
                         optional: true,
-                        block_id: 'attachments_hint',
-                        element: {
-                            type: 'plain_text_input',
-                            action_id: 'attachments_hint',
-                            placeholder: {
-                                type: 'plain_text',
-                                text: 'Optional: paste URL(s) of attachments or leave instructions to upload in thread',
-                            },
-                        },
+                        block_id: 'input_block_id',
                         label: {
                             type: 'plain_text',
-                            text: 'Attachments (optional)',
+                            text: 'Attachments',
+                        },
+                        element: {
+                            type: 'file_input',
+                            action_id: 'file_input_action_id_1',
+                            filetypes: ['jpg', 'png'],
+                            max_files: 5,
                         },
                     },
                 ],
