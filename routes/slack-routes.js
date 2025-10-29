@@ -341,39 +341,39 @@ router.post(
                                         type: 'plain_text',
                                         text: 'Access/Check-in',
                                     },
-                                    value: 'access',
+                                    value: 'Access/Check-in',
                                 },
                                 {
                                     text: {
                                         type: 'plain_text',
                                         text: 'Cleanliness/Supplies',
                                     },
-                                    value: 'clean',
+                                    value: 'Cleanliness/Supplies',
                                 },
                                 {
                                     text: {
                                         type: 'plain_text',
                                         text: 'Property condition',
                                     },
-                                    value: 'condition',
+                                    value: 'Property condition',
                                 },
                                 {
                                     text: {
                                         type: 'plain_text',
                                         text: 'Noise/Disturbances',
                                     },
-                                    value: 'noise',
+                                    value: 'Noise/Disturbances',
                                 },
                                 {
                                     text: {
                                         type: 'plain_text',
                                         text: 'Reservation/OTA Issues',
                                     },
-                                    value: 'reservation',
+                                    value: 'Reservation/OTA Issues',
                                 },
                                 {
                                     text: { type: 'plain_text', text: 'Other' },
-                                    value: 'other',
+                                    value: 'Other',
                                 },
                             ],
                         },
