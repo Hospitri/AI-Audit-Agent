@@ -125,27 +125,38 @@ router.post(
                                     vals.attachments_block.attachments
                                         .selected_files;
                                 for (const f of files) {
-                                    try {
-                                        await slack.files.sharedPublicURL({
-                                            file: f.id,
-                                        });
-                                    } catch (e) {
-                                        console.warn(
-                                            'files.sharedPublicURL failed (may require permissions):',
-                                            e?.message
-                                        );
-                                    }
-
                                     const info = await slack.files.info({
                                         file: f.id,
                                     });
-                                    const publicUrl =
-                                        info?.file?.permalink_public ||
-                                        info?.file?.url_private_download ||
-                                        info?.file?.url_private;
-                                    if (publicUrl) attachments.push(publicUrl);
+                                    if (info?.file?.url_private)
+                                        attachments.push(info.file.url_private);
                                 }
                             }
+                            const assigneeNames = [];
+                            for (const sid of assignees) {
+                                try {
+                                    const u = await slack.users.info({
+                                        user: sid,
+                                    });
+                                    const name =
+                                        u?.user?.profile?.display_name ||
+                                        u?.user?.real_name ||
+                                        `<@${sid}>`;
+                                    assigneeNames.push(name);
+                                } catch (e) {
+                                    assigneeNames.push(`<@${sid}>`);
+                                }
+                            }
+                            let submittedByName = submittedBySlackId;
+                            try {
+                                const sInfo = await slack.users.info({
+                                    user: submittedBySlackId,
+                                });
+                                submittedByName =
+                                    sInfo?.user?.profile?.display_name ||
+                                    sInfo?.user?.real_name ||
+                                    submittedBySlackId;
+                            } catch (e) {}
 
                             notionResult = await createNotionTicket({
                                 booking,
@@ -153,9 +164,11 @@ router.post(
                                 guest,
                                 summary,
                                 issues,
-                                assignees,
+                                assignees, 
+                                assigneeNames,
                                 submittedBySlackId,
-                                attachments: attachments.map(a => a.url),
+                                submittedByName,
+                                attachments,
                             });
                             console.log(
                                 '[slack] createNotionTicket returned:',

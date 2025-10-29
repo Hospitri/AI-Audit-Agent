@@ -9,6 +9,29 @@ function normalizeDbId(id) {
     return id.replace(/-/g, '');
 }
 
+function findProp(dbProps, candidates = []) {
+    for (const c of candidates) {
+        if (dbProps[c]) return dbProps[c];
+        const found = Object.values(dbProps).find(
+            p => (p.name || '').toLowerCase() === c.toLowerCase()
+        );
+        if (found) return found;
+    }
+    return null;
+}
+
+function safeTitleOrRichText(propName, dbProps, keyName, value) {
+    const prop = findProp(dbProps, [propName, keyName]);
+    if (!prop) return null;
+    if (prop.type === 'title') {
+        return { [prop.name]: { title: [{ text: { content: value || '' } }] } };
+    } else {
+        return {
+            [prop.name]: { rich_text: [{ text: { content: value || '' } }] },
+        };
+    }
+}
+
 function buildPropertyPayload(dbProperties, values = {}) {
     const {
         listing,
@@ -17,45 +40,56 @@ function buildPropertyPayload(dbProperties, values = {}) {
         summary,
         issues = [],
         assignees = [],
-        submittedBySlackId,
+        assigneeNames = [],
+        submittedByName = '',
         attachments = [],
     } = values;
 
     const props = {};
     const prop = name => dbProperties[name] || null;
 
-    const listingProp = prop('Listing');
+    const listingProp = findProp(dbProperties, ['Listing', 'Title', 'Name']);
     if (listingProp) {
         if (listingProp.type === 'title') {
             props[listingProp.name] = {
                 title: [{ text: { content: listing || 'No listing' } }],
             };
-        } else if (listingProp.type === 'rich_text') {
+        } else {
             props[listingProp.name] = {
                 rich_text: [{ text: { content: listing || 'No listing' } }],
             };
         }
     }
 
-    const bookingProp = prop('Booking reference');
+    const bookingProp = findProp(dbProperties, [
+        'Booking reference',
+        'Booking',
+        'Booking Reference',
+    ]);
     if (bookingProp) {
-        if (bookingProp.type === 'rich_text')
-            props[bookingProp.name] = {
-                rich_text: [{ text: { content: booking || '' } }],
-            };
-        else if (bookingProp.type === 'title')
+        if (bookingProp.type === 'title') {
             props[bookingProp.name] = {
                 title: [{ text: { content: booking || '' } }],
             };
+        } else {
+            props[bookingProp.name] = {
+                rich_text: [{ text: { content: booking || '' } }],
+            };
+        }
     }
 
-    const guestProp = prop('Guest');
+    const guestProp = findProp(dbProperties, [
+        'Guest',
+        'Guest name',
+        'Guest Name',
+    ]);
     if (guestProp) {
         if (guestProp.type === 'multi_select') {
             props[guestProp.name] = {
                 multi_select: (guest || '')
                     .split(',')
-                    .map(g => ({ name: g.trim() })),
+                    .map(g => ({ name: g.trim() }))
+                    .filter(x => x.name),
             };
         } else {
             props[guestProp.name] = {
@@ -64,67 +98,117 @@ function buildPropertyPayload(dbProperties, values = {}) {
         }
     }
 
-    const summaryProp = prop('Summary');
+    const summaryProp = findProp(dbProperties, ['Summary']);
     if (summaryProp)
         props[summaryProp.name] = {
             rich_text: [{ text: { content: summary || '' } }],
         };
 
-    const issuesProp = prop('Issue type');
+    const issuesProp = findProp(dbProperties, [
+        'Issue type',
+        'Issue Type',
+        'Issue',
+    ]);
     if (issuesProp) {
-        if (issuesProp.type === 'multi_select') {
+        if (
+            issuesProp.type === 'multi_select' ||
+            issuesProp.type === 'select'
+        ) {
             props[issuesProp.name] = {
-                multi_select: issues.map(i => ({ name: i })),
+                multi_select: issues.map(i => ({ name: String(i) })),
             };
         } else {
             props[issuesProp.name] = {
-                rich_text: [{ text: { content: issues.join(', ') } }],
+                rich_text: [{ text: { content: (issues || []).join(', ') } }],
             };
         }
     }
 
-    const assignProp = prop('Assigned To');
-    if (assignProp) {
-        if (assignProp.type === 'people') {
-            props['Slack Assignees'] = {
+    const assignProp = findProp(dbProperties, [
+        'Assigned To',
+        'Assigned',
+        'Assignee',
+    ]);
+    if (assignProp && assignProp.type === 'people') {
+        const companion = findProp(dbProperties, [
+            'Assignee (Slack)',
+            'Assignee (Slack IDs)',
+            'Assigned (Slack)',
+            'Assignee Names',
+        ]);
+        if (companion) {
+            props[companion.name] = {
                 rich_text: [
                     {
                         text: {
-                            content:
-                                assignees.map(id => `<@${id}>`).join(', ') ||
-                                'N/A',
+                            content: (assigneeNames || []).join(', ') || 'N/A',
                         },
                     },
                 ],
             };
         } else {
-            props[assignProp.name] = {
-                rich_text: [
-                    {
-                        text: {
-                            content:
-                                assignees.map(id => `<@${id}>`).join(', ') ||
-                                'N/A',
+            const alt = findProp(dbProperties, [
+                'Assigned (text)',
+                'Assigned Text',
+                'Assigned Slack',
+            ]);
+            if (alt)
+                props[alt.name] = {
+                    rich_text: [
+                        {
+                            text: {
+                                content:
+                                    (assigneeNames || []).join(', ') || 'N/A',
+                            },
                         },
-                    },
-                ],
-            };
+                    ],
+                };
         }
-    }
-
-    const subProp = prop('Submitted by');
-    if (subProp)
-        props[subProp.name] = {
+    } else if (assignProp) {
+        props[assignProp.name] = {
             rich_text: [
-                { text: { content: `<@${submittedBySlackId}>` || '-' } },
+                { text: { content: (assigneeNames || []).join(', ') || '' } },
             ],
         };
+    }
 
-    const attProp = prop('Attachments') || prop('Attachment');
+    const subProp = findProp(dbProperties, [
+        'Submitted by',
+        'Submitted_by',
+        'Submitted',
+    ]);
+    if (subProp) {
+        if (subProp.type === 'people') {
+            const companion = findProp(dbProperties, [
+                'Submitted by (text)',
+                'Submitted Name',
+                'Submitted Plain',
+            ]);
+            if (companion)
+                companion &&
+                    (props[companion.name] = {
+                        rich_text: [
+                            { text: { content: submittedByName || '' } },
+                        ],
+                    });
+            else {
+            }
+        } else {
+            props[subProp.name] = {
+                rich_text: [{ text: { content: submittedByName || '' } }],
+            };
+        }
+    }
+
+    const attProp = findProp(dbProperties, [
+        'Attachments',
+        'Attachment',
+        'Files',
+    ]);
     if (attProp) {
         if (attProp.type === 'files') {
             props[attProp.name] = {
-                files: attachments.map(url => ({
+                files: (attachments || []).map(url => ({
                     name: url.split('/').pop(),
                     type: 'external',
                     external: { url },
@@ -168,10 +252,7 @@ async function createNotionTicket(data = {}) {
         };
     }
 
-    const payload = {
-        parent: { database_id: dbId },
-        properties,
-    };
+    const payload = { parent: { database_id: dbId }, properties };
 
     console.log('[notion] creating page, payload sample:', {
         dbId,
@@ -224,19 +305,13 @@ async function updateNotionTicketWithThread(pageId, fields = {}) {
     }
 
     const propName = threadProp.name;
-
     let updatePayload = {};
-    if (threadProp.type === 'url') {
+    if (threadProp.type === 'url')
         updatePayload[propName] = { url: fields.thread_url || null };
-    } else if (threadProp.type === 'rich_text') {
+    else
         updatePayload[propName] = {
             rich_text: [{ text: { content: fields.thread_url || '' } }],
         };
-    } else {
-        updatePayload[propName] = {
-            rich_text: [{ text: { content: fields.thread_url || '' } }],
-        };
-    }
 
     await notion.pages.update({ page_id: pageId, properties: updatePayload });
 }
