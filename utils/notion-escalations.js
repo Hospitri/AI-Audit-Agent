@@ -43,6 +43,7 @@ function buildPropertyPayload(dbProperties, values = {}) {
         assigneeNames = [],
         submittedByName = '',
         attachments = [],
+        notionAssigneeIds = [],
     } = values;
 
     const props = {};
@@ -129,49 +130,40 @@ function buildPropertyPayload(dbProperties, values = {}) {
         'Assigned',
         'Assignee',
     ]);
-    if (assignProp && assignProp.type === 'people') {
-        const companion = findProp(dbProperties, [
-            'Assignee (Slack)',
-            'Assignee (Slack IDs)',
-            'Assigned (Slack)',
-            'Assignee Names',
-        ]);
-        if (companion) {
-            props[companion.name] = {
+    if (assignProp) {
+        if (assignProp.type === 'people') {
+            if (Array.isArray(notionAssigneeIds) && notionAssigneeIds.length) {
+                props[assignProp.name] = {
+                    people: notionAssigneeIds.map(id => ({ id })),
+                };
+            } else {
+                const companion = findProp(dbProperties, [
+                    'Assignee (Slack)',
+                    'Assignee Names',
+                    'Assigned (text)',
+                ]);
+                if (companion) {
+                    props[companion.name] = {
+                        rich_text: [
+                            {
+                                text: {
+                                    content:
+                                        (assigneeNames || []).join(', ') ||
+                                        'N/A',
+                                },
+                            },
+                        ],
+                    };
+                }
+            }
+        } else {
+            props[assignProp.name] = {
                 rich_text: [
-                    {
-                        text: {
-                            content: (assigneeNames || []).join(', ') || 'N/A',
-                        },
-                    },
+                    { text: { content: (assigneeNames || []).join(', ') } },
                 ],
             };
-        } else {
-            const alt = findProp(dbProperties, [
-                'Assigned (text)',
-                'Assigned Text',
-                'Assigned Slack',
-            ]);
-            if (alt)
-                props[alt.name] = {
-                    rich_text: [
-                        {
-                            text: {
-                                content:
-                                    (assigneeNames || []).join(', ') || 'N/A',
-                            },
-                        },
-                    ],
-                };
         }
-    } else if (assignProp) {
-        props[assignProp.name] = {
-            rich_text: [
-                { text: { content: (assigneeNames || []).join(', ') || '' } },
-            ],
-        };
     }
-
     const subProp = findProp(dbProperties, [
         'Submitted by',
         'Submitted_by',

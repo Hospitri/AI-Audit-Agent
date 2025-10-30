@@ -11,6 +11,30 @@ const router = express.Router();
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
 const SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
 
+const notionUserEmailCache = new Map();
+
+async function getNotionUserIdByEmail(email) {
+    if (!email) return null;
+    if (notionUserEmailCache.has(email)) return notionUserEmailCache.get(email);
+
+    let cursor = undefined;
+    do {
+        const res = await notion.users.list({ start_cursor: cursor });
+        for (const u of res.results || []) {
+            if (u.type === 'person' && u.person && u.person.email) {
+                if (u.person.email.toLowerCase() === email.toLowerCase()) {
+                    notionUserEmailCache.set(email, u.id);
+                    return u.id;
+                }
+            }
+        }
+        cursor = res.has_more ? res.next_cursor : undefined;
+    } while (cursor);
+
+    notionUserEmailCache.set(email, null);
+    return null;
+}
+
 function timingSafeCompare(a, b) {
     try {
         return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -116,47 +140,98 @@ router.post(
                                 }
                             );
 
-                            let attachments = [];
+                            const attachments = [];
                             if (
-                                vals.attachments_block?.attachments
+                                vals.input_block_id?.file_input_action_id_1
                                     ?.selected_files
                             ) {
                                 const files =
-                                    vals.attachments_block.attachments
+                                    vals.input_block_id.file_input_action_id_1
                                         .selected_files;
                                 for (const f of files) {
-                                    const info = await slack.files.info({
-                                        file: f.id,
-                                    });
-                                    if (info?.file?.url_private)
-                                        attachments.push(info.file.url_private);
+                                    try {
+                                        await slack.files.sharedPublicURL({
+                                            file: f.id,
+                                        });
+                                    } catch (e) {
+                                        console.warn(
+                                            'sharedPublicURL failed',
+                                            e?.data || e?.message || e
+                                        );
+                                    }
+                                    try {
+                                        const info = await slack.files.info({
+                                            file: f.id,
+                                        });
+                                        const pubUrl =
+                                            info?.file?.permalink_public ||
+                                            info?.file?.url_private ||
+                                            null;
+                                        if (pubUrl) attachments.push(pubUrl);
+                                    } catch (e) {
+                                        console.warn(
+                                            'files.info failed for',
+                                            f.id,
+                                            e?.data || e?.message || e
+                                        );
+                                    }
                                 }
                             }
-                            const assigneeNames = [];
+
+                            const assigneeSlackInfos = [];
                             for (const sid of assignees) {
                                 try {
                                     const u = await slack.users.info({
                                         user: sid,
                                     });
-                                    const name =
-                                        u?.user?.profile?.display_name ||
-                                        u?.user?.real_name ||
-                                        `<@${sid}>`;
-                                    assigneeNames.push(name);
+                                    const profile = u?.user?.profile || {};
+                                    assigneeSlackInfos.push({
+                                        slackId: sid,
+                                        email: profile.email || null,
+                                        name:
+                                            profile.display_name ||
+                                            profile.real_name ||
+                                            `<@${sid}>`,
+                                    });
                                 } catch (e) {
-                                    assigneeNames.push(`<@${sid}>`);
+                                    assigneeSlackInfos.push({
+                                        slackId: sid,
+                                        email: null,
+                                        name: `<@${sid}>`,
+                                    });
                                 }
                             }
+
                             let submittedByName = submittedBySlackId;
                             try {
                                 const sInfo = await slack.users.info({
                                     user: submittedBySlackId,
                                 });
+                                const p = sInfo?.user?.profile || {};
                                 submittedByName =
-                                    sInfo?.user?.profile?.display_name ||
-                                    sInfo?.user?.real_name ||
+                                    p.display_name ||
+                                    p.real_name ||
                                     submittedBySlackId;
                             } catch (e) {}
+
+                            const notionAssigneeIds = [];
+                            for (const info of assigneeSlackInfos) {
+                                if (info.email) {
+                                    try {
+                                        const nid =
+                                            await getNotionUserIdByEmail(
+                                                info.email
+                                            );
+                                        if (nid) notionAssigneeIds.push(nid);
+                                    } catch (e) {
+                                        console.warn(
+                                            'Could not map Slack user to Notion user by email',
+                                            info.email,
+                                            e?.message || e
+                                        );
+                                    }
+                                }
+                            }
 
                             notionResult = await createNotionTicket({
                                 booking,
@@ -164,8 +239,11 @@ router.post(
                                 guest,
                                 summary,
                                 issues,
-                                assignees, 
-                                assigneeNames,
+                                assignees,
+                                assigneeNames: assigneeSlackInfos.map(
+                                    x => x.name
+                                ),
+                                notionAssigneeIds,
                                 submittedBySlackId,
                                 submittedByName,
                                 attachments,
