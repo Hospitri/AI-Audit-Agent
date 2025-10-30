@@ -14,28 +14,6 @@ const SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
 
 const notionUserEmailCache = new Map();
 
-async function getNotionUserIdByEmail(email) {
-    if (!email) return null;
-    if (notionUserEmailCache.has(email)) return notionUserEmailCache.get(email);
-
-    let cursor = undefined;
-    do {
-        const res = await notion.users.list({ start_cursor: cursor });
-        for (const u of res.results || []) {
-            if (u.type === 'person' && u.person && u.person.email) {
-                if (u.person.email.toLowerCase() === email.toLowerCase()) {
-                    notionUserEmailCache.set(email, u.id);
-                    return u.id;
-                }
-            }
-        }
-        cursor = res.has_more ? res.next_cursor : undefined;
-    } while (cursor);
-
-    notionUserEmailCache.set(email, null);
-    return null;
-}
-
 function timingSafeCompare(a, b) {
     try {
         return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
