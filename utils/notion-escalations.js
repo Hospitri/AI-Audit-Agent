@@ -9,27 +9,41 @@ function normalizeDbId(id) {
     return id.replace(/-/g, '');
 }
 
-function findProp(dbProps, candidates = []) {
-    for (const c of candidates) {
-        if (dbProps[c]) return dbProps[c];
-        const found = Object.values(dbProps).find(
-            p => (p.name || '').toLowerCase() === c.toLowerCase()
-        );
-        if (found) return found;
+const notionUserEmailCache = new Map();
+
+async function getNotionUserIdByEmail(email) {
+    if (!email) return null;
+    if (notionUserEmailCache.has(email)) return notionUserEmailCache.get(email);
+
+    let cursor = undefined;
+    try {
+        do {
+            const res = await notion.users.list({ start_cursor: cursor });
+            for (const u of res.results || []) {
+                if (u.type === 'person' && u.person && u.person.email) {
+                    if (u.person.email.toLowerCase() === email.toLowerCase()) {
+                        notionUserEmailCache.set(email, u.id);
+                        return u.id;
+                    }
+                }
+            }
+            cursor = res.has_more ? res.next_cursor : undefined;
+        } while (cursor);
+    } catch (err) {
+        console.error('[notion] users.list failed', {
+            err: err?.message || err,
+        });
     }
+
+    notionUserEmailCache.set(email, null);
     return null;
 }
 
-function safeTitleOrRichText(propName, dbProps, keyName, value) {
-    const prop = findProp(dbProps, [propName, keyName]);
-    if (!prop) return null;
-    if (prop.type === 'title') {
-        return { [prop.name]: { title: [{ text: { content: value || '' } }] } };
-    } else {
-        return {
-            [prop.name]: { rich_text: [{ text: { content: value || '' } }] },
-        };
+function findPropByNames(dbProps, names = []) {
+    for (const n of names) {
+        if (Object.prototype.hasOwnProperty.call(dbProps, n)) return dbProps[n];
     }
+    return null;
 }
 
 function buildPropertyPayload(dbProperties, values = {}) {
@@ -39,17 +53,17 @@ function buildPropertyPayload(dbProperties, values = {}) {
         guest,
         summary,
         issues = [],
-        assignees = [],
         assigneeNames = [],
+        notionAssigneeIds = [],
         submittedByName = '',
         attachments = [],
-        notionAssigneeIds = [],
     } = values;
 
     const props = {};
     const prop = name => dbProperties[name] || null;
 
-    const listingProp = findProp(dbProperties, ['Listing', 'Title', 'Name']);
+    const listingProp =
+        prop('Listing') || prop('Listing name') || prop('Title');
     if (listingProp) {
         if (listingProp.type === 'title') {
             props[listingProp.name] = {
@@ -62,11 +76,7 @@ function buildPropertyPayload(dbProperties, values = {}) {
         }
     }
 
-    const bookingProp = findProp(dbProperties, [
-        'Booking reference',
-        'Booking',
-        'Booking Reference',
-    ]);
+    const bookingProp = prop('Booking reference') || prop('Booking');
     if (bookingProp) {
         if (bookingProp.type === 'title') {
             props[bookingProp.name] = {
@@ -79,44 +89,26 @@ function buildPropertyPayload(dbProperties, values = {}) {
         }
     }
 
-    const guestProp = findProp(dbProperties, [
-        'Guest',
-        'Guest name',
-        'Guest Name',
-    ]);
+    const guestProp = prop('Guest') || prop('Guest name');
     if (guestProp) {
-        if (guestProp.type === 'multi_select') {
-            props[guestProp.name] = {
-                multi_select: (guest || '')
-                    .split(',')
-                    .map(g => ({ name: g.trim() }))
-                    .filter(x => x.name),
-            };
-        } else {
-            props[guestProp.name] = {
-                rich_text: [{ text: { content: guest || '' } }],
-            };
-        }
+        props[guestProp.name] = {
+            rich_text: [{ text: { content: guest || '' } }],
+        };
     }
 
-    const summaryProp = findProp(dbProperties, ['Summary']);
-    if (summaryProp)
+    const summaryProp = prop('Summary');
+    if (summaryProp) {
         props[summaryProp.name] = {
             rich_text: [{ text: { content: summary || '' } }],
         };
+    }
 
-    const issuesProp = findProp(dbProperties, [
-        'Issue type',
-        'Issue Type',
-        'Issue',
-    ]);
+    const issuesProp =
+        prop('Issue type') || prop('Issue') || prop('Issue Type');
     if (issuesProp) {
-        if (
-            issuesProp.type === 'multi_select' ||
-            issuesProp.type === 'select'
-        ) {
+        if (issuesProp.type === 'multi_select') {
             props[issuesProp.name] = {
-                multi_select: issues.map(i => ({ name: String(i) })),
+                multi_select: (issues || []).map(i => ({ name: String(i) })),
             };
         } else {
             props[issuesProp.name] = {
@@ -125,11 +117,7 @@ function buildPropertyPayload(dbProperties, values = {}) {
         }
     }
 
-    const assignProp = findProp(dbProperties, [
-        'Assigned To',
-        'Assigned',
-        'Assignee',
-    ]);
+    const assignProp = prop('Assigned To'); // **case-sensitive exact**
     if (assignProp) {
         if (assignProp.type === 'people') {
             if (Array.isArray(notionAssigneeIds) && notionAssigneeIds.length) {
@@ -137,54 +125,29 @@ function buildPropertyPayload(dbProperties, values = {}) {
                     people: notionAssigneeIds.map(id => ({ id })),
                 };
             } else {
-                const companion = findProp(dbProperties, [
-                    'Assignee (Slack)',
-                    'Assignee Names',
-                    'Assigned (text)',
-                ]);
-                if (companion) {
-                    props[companion.name] = {
-                        rich_text: [
-                            {
-                                text: {
-                                    content:
-                                        (assigneeNames || []).join(', ') ||
-                                        'N/A',
-                                },
-                            },
-                        ],
-                    };
-                }
+                console.warn(
+                    '[notion] Assigned To property is people but no notionAssigneeIds provided.'
+                );
             }
         } else {
             props[assignProp.name] = {
                 rich_text: [
-                    { text: { content: (assigneeNames || []).join(', ') } },
+                    { text: { content: assigneeNames.join(', ') || '' } },
                 ],
             };
         }
+    } else {
+        console.warn(
+            '[notion] WARNING: Database has no "Assigned To" property (case-sensitive).'
+        );
     }
-    const subProp = findProp(dbProperties, [
-        'Submitted by',
-        'Submitted_by',
-        'Submitted',
-    ]);
+
+    const subProp = prop('Submitted by');
     if (subProp) {
-        if (subProp.type === 'people') {
-            const companion = findProp(dbProperties, [
-                'Submitted by (text)',
-                'Submitted Name',
-                'Submitted Plain',
-            ]);
-            if (companion)
-                companion &&
-                    (props[companion.name] = {
-                        rich_text: [
-                            { text: { content: submittedByName || '' } },
-                        ],
-                    });
-            else {
-            }
+        if (subProp.type === 'rich_text' || subProp.type === 'title') {
+            props[subProp.name] = {
+                rich_text: [{ text: { content: submittedByName || '' } }],
+            };
         } else {
             props[subProp.name] = {
                 rich_text: [{ text: { content: submittedByName || '' } }],
@@ -192,16 +155,12 @@ function buildPropertyPayload(dbProperties, values = {}) {
         }
     }
 
-    const attProp = findProp(dbProperties, [
-        'Attachments',
-        'Attachment',
-        'Files',
-    ]);
+    const attProp = prop('Attachments') || prop('Attachment');
     if (attProp) {
         if (attProp.type === 'files') {
             props[attProp.name] = {
                 files: (attachments || []).map(url => ({
-                    name: url.split('/').pop(),
+                    name: url.split('/').pop() || 'file',
                     type: 'external',
                     external: { url },
                 })),
@@ -229,8 +188,7 @@ async function createNotionTicket(data = {}) {
     } catch (err) {
         console.error('[notion] failed to retrieve database:', {
             dbId,
-            errMessage: err?.message,
-            errBody: err?.body || err?.response || null,
+            errMessage: err?.message || err,
         });
         throw err;
     }
@@ -288,24 +246,25 @@ async function updateNotionTicketWithThread(pageId, fields = {}) {
                 },
             },
         };
-        try {
-            await notion.pages.update(payload);
-            return;
-        } catch (err) {
-            throw err;
-        }
+        await notion.pages.update(payload);
+        return;
     }
 
     const propName = threadProp.name;
     let updatePayload = {};
-    if (threadProp.type === 'url')
+    if (threadProp.type === 'url') {
         updatePayload[propName] = { url: fields.thread_url || null };
-    else
+    } else {
         updatePayload[propName] = {
             rich_text: [{ text: { content: fields.thread_url || '' } }],
         };
+    }
 
     await notion.pages.update({ page_id: pageId, properties: updatePayload });
 }
 
-module.exports = { createNotionTicket, updateNotionTicketWithThread };
+module.exports = {
+    createNotionTicket,
+    updateNotionTicketWithThread,
+    getNotionUserIdByEmail,
+};

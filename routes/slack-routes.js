@@ -5,6 +5,7 @@ const bodyParser = require('body-parser');
 const {
     createNotionTicket,
     updateNotionTicketWithThread,
+    getNotionUserIdByEmail,
 } = require('../utils/notion-escalations.js');
 
 const router = express.Router();
@@ -140,22 +141,19 @@ router.post(
                                 }
                             );
 
-                            const attachments = [];
-                            if (
-                                vals.input_block_id?.file_input_action_id_1
-                                    ?.selected_files
-                            ) {
-                                const files =
-                                    vals.input_block_id.file_input_action_id_1
-                                        .selected_files;
-                                for (const f of files) {
+                            let attachments = [];
+                            try {
+                                const filesSelected =
+                                    vals.input_block_id?.file_input_action_id_1
+                                        ?.selected_files || [];
+                                for (const f of filesSelected) {
                                     try {
                                         await slack.files.sharedPublicURL({
                                             file: f.id,
                                         });
                                     } catch (e) {
                                         console.warn(
-                                            'sharedPublicURL failed',
+                                            'sharedPublicURL error (ok if disabled):',
                                             e?.data || e?.message || e
                                         );
                                     }
@@ -163,11 +161,11 @@ router.post(
                                         const info = await slack.files.info({
                                             file: f.id,
                                         });
-                                        const pubUrl =
+                                        const pub =
                                             info?.file?.permalink_public ||
                                             info?.file?.url_private ||
                                             null;
-                                        if (pubUrl) attachments.push(pubUrl);
+                                        if (pub) attachments.push(pub);
                                     } catch (e) {
                                         console.warn(
                                             'files.info failed for',
@@ -176,6 +174,8 @@ router.post(
                                         );
                                     }
                                 }
+                            } catch (e) {
+                                console.warn('attachments parsing failed', e);
                             }
 
                             const assigneeSlackInfos = [];
@@ -194,11 +194,46 @@ router.post(
                                             `<@${sid}>`,
                                     });
                                 } catch (e) {
+                                    console.warn(
+                                        'users.info failed for',
+                                        sid,
+                                        e?.data || e?.message || e
+                                    );
                                     assigneeSlackInfos.push({
                                         slackId: sid,
                                         email: null,
                                         name: `<@${sid}>`,
                                     });
+                                }
+                            }
+
+                            const notionAssigneeIds = [];
+                            for (const info of assigneeSlackInfos) {
+                                if (!info.email) {
+                                    console.error(
+                                        '[slack->notion] missing email for Slack user',
+                                        info.slackId
+                                    );
+                                    continue;
+                                }
+                                try {
+                                    const nid = await getNotionUserIdByEmail(
+                                        info.email
+                                    );
+                                    if (!nid) {
+                                        console.error(
+                                            '[slack->notion] Could not map Slack user to Notion user by email',
+                                            info.email
+                                        );
+                                    } else {
+                                        notionAssigneeIds.push(nid);
+                                    }
+                                } catch (err) {
+                                    console.error(
+                                        'Could not map Slack user to Notion user by email',
+                                        info.email,
+                                        err?.message || err
+                                    );
                                 }
                             }
 
@@ -212,25 +247,11 @@ router.post(
                                     p.display_name ||
                                     p.real_name ||
                                     submittedBySlackId;
-                            } catch (e) {}
-
-                            const notionAssigneeIds = [];
-                            for (const info of assigneeSlackInfos) {
-                                if (info.email) {
-                                    try {
-                                        const nid =
-                                            await getNotionUserIdByEmail(
-                                                info.email
-                                            );
-                                        if (nid) notionAssigneeIds.push(nid);
-                                    } catch (e) {
-                                        console.warn(
-                                            'Could not map Slack user to Notion user by email',
-                                            info.email,
-                                            e?.message || e
-                                        );
-                                    }
-                                }
+                            } catch (e) {
+                                console.warn(
+                                    'Could not fetch submittedBy name',
+                                    e?.message || e
+                                );
                             }
 
                             notionResult = await createNotionTicket({
@@ -239,12 +260,10 @@ router.post(
                                 guest,
                                 summary,
                                 issues,
-                                assignees,
+                                notionAssigneeIds,
                                 assigneeNames: assigneeSlackInfos.map(
                                     x => x.name
                                 ),
-                                notionAssigneeIds,
-                                submittedBySlackId,
                                 submittedByName,
                                 attachments,
                             });
