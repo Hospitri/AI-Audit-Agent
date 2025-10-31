@@ -300,12 +300,16 @@ router.post(
                             });
                             const { ts, channel: postedChannel } = postResp;
 
-                            const permalinkResp = await slack.chat.getPermalink(
-                                {
-                                    channel: postedChannel,
-                                    message_ts: ts,
-                                }
-                            );
+                            const permalinkResp = (await slack.chat
+                                .getPermalink)
+                                ? await slack.chat.getPermalink({
+                                      channel: postedChannel,
+                                      message_ts: ts,
+                                  })
+                                : await slack.conversations.getPermalink({
+                                      channel: postedChannel,
+                                      message_ts: ts,
+                                  });
 
                             const threadUrl = permalinkResp?.permalink || null;
 
@@ -313,7 +317,11 @@ router.post(
                                 try {
                                     await updateNotionTicketWithThread(
                                         notionResult.id,
-                                        { thread_url: threadUrl }
+                                        {
+                                            thread_url: threadUrl,
+                                            thread_channel: postedChannel,
+                                            thread_ts: ts,
+                                        }
                                     );
                                 } catch (err) {
                                     console.warn(
