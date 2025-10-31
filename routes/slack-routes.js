@@ -257,52 +257,79 @@ Please reply to this message in thread with any relevant update.`;
                             });
                             const { ts, channel: postedChannel } = postResp;
 
+                            const thread_channel = postedChannel;
+                            const thread_ts = ts;
+
+                            let threadUrl = null;
                             try {
-                                const permalinkResp =
-                                    await slack.conversations.getPermalink({
-                                        channel: postedChannel,
-                                        message_ts: ts,
-                                    });
-                                const threadUrl =
-                                    permalinkResp?.permalink || null;
-                                if (threadUrl) {
-                                    try {
-                                        await updateNotionTicketWithThread(
-                                            notionResult.id,
-                                            {
-                                                thread_url: threadUrl,
-                                                thread_channel: postedChannel,
-                                                thread_ts: ts,
-                                            }
-                                        );
-                                    } catch (err) {
-                                        console.warn(
-                                            'Failed to update notion with thread_url',
-                                            err
-                                        );
-                                    }
+                                if (
+                                    slack.conversations &&
+                                    typeof slack.conversations.getPermalink ===
+                                        'function'
+                                ) {
+                                    const permalinkResp =
+                                        await slack.conversations.getPermalink({
+                                            channel: postedChannel,
+                                            message_ts: ts,
+                                        });
+                                    threadUrl =
+                                        permalinkResp?.permalink || null;
+                                } else {
+                                    threadUrl = `https://slack.com/archives/${postedChannel}/p${String(
+                                        ts
+                                    ).replace('.', '')}`;
                                 }
-                            } catch (e) {
-                                console.warn(
-                                    'Could not get permalink:',
-                                    e?.message || e
-                                );
+                            } catch (err) {
+                                try {
+                                    threadUrl = `https://slack.com/archives/${postedChannel}/p${String(
+                                        ts
+                                    ).replace('.', '')}`;
+                                } catch (e) {
+                                    console.warn(
+                                        'Could not construct fallback permalink:',
+                                        e?.message || e
+                                    );
+                                    threadUrl = null;
+                                }
+                            }
+
+                            if (notionResult && notionResult.id) {
+                                try {
+                                    await updateNotionTicketWithThread(
+                                        notionResult.id,
+                                        {
+                                            thread_url: threadUrl,
+                                            thread_channel,
+                                            thread_ts,
+                                        }
+                                    );
+                                } catch (err) {
+                                    console.warn(
+                                        'Failed to update notion with thread fields',
+                                        err?.message || err
+                                    );
+                                }
                             }
 
                             try {
-                                await slack.reactions.add({
-                                    name: 'new',
-                                    channel: postedChannel,
-                                    timestamp: ts,
-                                });
-                            } catch (err) {
                                 try {
+                                    await slack.reactions.add({
+                                        name: 'new',
+                                        channel: postedChannel,
+                                        timestamp: ts,
+                                    });
+                                } catch (_) {
                                     await slack.reactions.add({
                                         name: 'white_check_mark',
                                         channel: postedChannel,
                                         timestamp: ts,
                                     });
-                                } catch (_) {}
+                                }
+                            } catch (err) {
+                                console.warn(
+                                    'Could not add initial reaction',
+                                    err?.message || err
+                                );
                             }
                         } catch (err) {
                             console.error('Slack postMessage failed', err);
