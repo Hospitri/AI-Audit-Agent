@@ -119,41 +119,14 @@ router.post(
                                 }
                             );
 
-                            let attachments = [];
+                            let attachments_present = false;
                             try {
-                                const filesSelected =
-                                    vals.input_block_id?.file_input_action_id_1
-                                        ?.selected_files || [];
-                                for (const f of filesSelected) {
-                                    try {
-                                        await slack.files.sharedPublicURL({
-                                            file: f.id,
-                                        });
-                                    } catch (e) {
-                                        console.warn(
-                                            'sharedPublicURL error (ok if disabled):',
-                                            e?.data || e?.message || e
-                                        );
-                                    }
-                                    try {
-                                        const info = await slack.files.info({
-                                            file: f.id,
-                                        });
-                                        const pub =
-                                            info?.file?.permalink_public ||
-                                            info?.file?.url_private ||
-                                            null;
-                                        if (pub) attachments.push(pub);
-                                    } catch (e) {
-                                        console.warn(
-                                            'files.info failed for',
-                                            f.id,
-                                            e?.data || e?.message || e
-                                        );
-                                    }
-                                }
+                                const sel =
+                                    vals.attachments_block?.attachments_select
+                                        ?.selected_option?.value;
+                                attachments_present = sel === 'yes';
                             } catch (e) {
-                                console.warn('attachments parsing failed', e);
+                                attachments_present = false;
                             }
 
                             const assigneeSlackInfos = [];
@@ -243,7 +216,7 @@ router.post(
                                     x => x.name
                                 ),
                                 submittedByName,
-                                attachments,
+                                attachments_present,
                             });
                             console.log(
                                 '[slack] createNotionTicket returned:',
