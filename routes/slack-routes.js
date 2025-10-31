@@ -119,6 +119,21 @@ router.post(
                                 }
                             );
 
+                            const vals = payload.view.state.values;
+                            const booking =
+                                vals.booking?.booking_ref?.value || null;
+                            const listing =
+                                vals.listing?.listing_name?.value || null;
+                            const guest = vals.guest?.guest_name?.value || null;
+                            const summary =
+                                vals.summary?.summary?.value || null;
+                            const issues = (
+                                vals.issue?.issue_type?.selected_options || []
+                            ).map(o => o.value);
+                            const assignees =
+                                vals.assign?.assignees?.selected_users || [];
+                            const submittedBySlackId = payload.user?.id;
+
                             let attachments_present = false;
                             try {
                                 const sel =
@@ -251,11 +266,17 @@ router.post(
                                 *Booking reference:* ${booking || '-'}
                                 *Listing:* ${listing || '-'}
                                 *Guest:* ${guest || '-'}
-                                *Issue type:* ${(issues || []).join(', ') || '-'}
+                                *Issue type:* ${
+                                    (issues || []).join(', ') || '-'
+                                }
                                 *Summary:*
                                 ${summary || '-'}
                                 ––––––––––––––––––––––––––––––––––––––––
-                                *Assigned to:* ${assignees.map(id => `<@${id}>`).join(', ') || '-'}
+                                *Assigned to:* ${
+                                    assignees
+                                        .map(id => `<@${id}>`)
+                                        .join(', ') || '-'
+                                }
                                 *Submitted by:* <@${submittedBySlackId}>
                                 *Attachments:* ${attachmentsText}
                                 <${notionResult.url}|Open ticket in Notion>
