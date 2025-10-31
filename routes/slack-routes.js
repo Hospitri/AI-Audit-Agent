@@ -90,6 +90,20 @@ router.post(
 
                 (async () => {
                     try {
+                        const vals = payload.view.state.values || {};
+                        const booking =
+                            vals.booking?.booking_ref?.value || null;
+                        const listing =
+                            vals.listing?.listing_name?.value || null;
+                        const guest = vals.guest?.guest_name?.value || null;
+                        const summary = vals.summary?.summary?.value || null;
+                        const issues = (
+                            vals.issue?.issue_type?.selected_options || []
+                        ).map(o => o.value);
+                        const assignees =
+                            vals.assign?.assignees?.selected_users || [];
+                        const submittedBySlackId = payload.user?.id || null;
+
                         let attachments = [];
                         try {
                             const filesSelected =
