@@ -301,7 +301,7 @@ router.post(
 
                             try {
                                 await slack.reactions.add({
-                                    name: 'white_check_mark',
+                                    name: 'new',
                                     channel: postedChannel,
                                     timestamp: ts,
                                 });
