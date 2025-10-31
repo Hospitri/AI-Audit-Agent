@@ -90,7 +90,7 @@ router.post(
 
                 (async () => {
                     try {
-                        const vals = payload.view.state.values;
+                        const vals = payload.view.state.values || {};
                         const booking =
                             vals.booking?.booking_ref?.value || null;
                         const listing =
@@ -102,109 +102,78 @@ router.post(
                         ).map(o => o.value);
                         const assignees =
                             vals.assign?.assignees?.selected_users || [];
-                        const submittedBySlackId = payload.user?.id;
+                        const submittedBySlackId = payload.user?.id || null;
 
-                        let notionResult;
+                        let attachments_present = false;
                         try {
-                            console.log(
-                                '[slack] creating notion ticket with:',
-                                {
-                                    booking,
-                                    listing,
-                                    guest,
-                                    summary,
-                                    issues,
-                                    assignees,
-                                    submittedBySlackId,
-                                }
-                            );
+                            const sel =
+                                vals.attachments_block?.attachments_select
+                                    ?.selected_option?.value;
+                            attachments_present = sel === 'yes';
+                        } catch (e) {
+                            attachments_present = false;
+                        }
 
-                            const vals = payload.view.state.values;
-                            const booking =
-                                vals.booking?.booking_ref?.value || null;
-                            const listing =
-                                vals.listing?.listing_name?.value || null;
-                            const guest = vals.guest?.guest_name?.value || null;
-                            const summary =
-                                vals.summary?.summary?.value || null;
-                            const issues = (
-                                vals.issue?.issue_type?.selected_options || []
-                            ).map(o => o.value);
-                            const assignees =
-                                vals.assign?.assignees?.selected_users || [];
-                            const submittedBySlackId = payload.user?.id;
-
-                            let attachments_present = false;
+                        const assigneeSlackInfos = [];
+                        for (const sid of assignees) {
                             try {
-                                const sel =
-                                    vals.attachments_block?.attachments_select
-                                        ?.selected_option?.value;
-                                attachments_present = sel === 'yes';
+                                const u = await slack.users.info({ user: sid });
+                                const profile = u?.user?.profile || {};
+                                assigneeSlackInfos.push({
+                                    slackId: sid,
+                                    email: profile.email || null,
+                                    name:
+                                        profile.display_name ||
+                                        profile.real_name ||
+                                        `<@${sid}>`,
+                                });
                             } catch (e) {
-                                attachments_present = false;
+                                console.warn(
+                                    'users.info failed for',
+                                    sid,
+                                    e?.data || e?.message || e
+                                );
+                                assigneeSlackInfos.push({
+                                    slackId: sid,
+                                    email: null,
+                                    name: `<@${sid}>`,
+                                });
                             }
+                        }
 
-                            const assigneeSlackInfos = [];
-                            for (const sid of assignees) {
-                                try {
-                                    const u = await slack.users.info({
-                                        user: sid,
-                                    });
-                                    const profile = u?.user?.profile || {};
-                                    assigneeSlackInfos.push({
-                                        slackId: sid,
-                                        email: profile.email || null,
-                                        name:
-                                            profile.display_name ||
-                                            profile.real_name ||
-                                            `<@${sid}>`,
-                                    });
-                                } catch (e) {
-                                    console.warn(
-                                        'users.info failed for',
-                                        sid,
-                                        e?.data || e?.message || e
-                                    );
-                                    assigneeSlackInfos.push({
-                                        slackId: sid,
-                                        email: null,
-                                        name: `<@${sid}>`,
-                                    });
-                                }
+                        const notionAssigneeIds = [];
+                        for (const info of assigneeSlackInfos) {
+                            if (!info.email) {
+                                console.error(
+                                    '[slack->notion] missing email for Slack user',
+                                    info.slackId
+                                );
+                                continue;
                             }
-
-                            const notionAssigneeIds = [];
-                            for (const info of assigneeSlackInfos) {
-                                if (!info.email) {
+                            try {
+                                const nid = await getNotionUserIdByEmail(
+                                    info.email
+                                );
+                                if (!nid) {
                                     console.error(
-                                        '[slack->notion] missing email for Slack user',
-                                        info.slackId
-                                    );
-                                    continue;
-                                }
-                                try {
-                                    const nid = await getNotionUserIdByEmail(
+                                        '[slack->notion] Could not map Slack user to Notion user by email',
                                         info.email
                                     );
-                                    if (!nid) {
-                                        console.error(
-                                            '[slack->notion] Could not map Slack user to Notion user by email',
-                                            info.email
-                                        );
-                                    } else {
-                                        notionAssigneeIds.push(nid);
-                                    }
-                                } catch (err) {
-                                    console.error(
-                                        'Could not map Slack user to Notion user by email',
-                                        info.email,
-                                        err?.message || err
-                                    );
+                                } else {
+                                    notionAssigneeIds.push(nid);
                                 }
+                            } catch (err) {
+                                console.error(
+                                    'Could not map Slack user to Notion user by email',
+                                    info.email,
+                                    err?.message || err
+                                );
                             }
+                        }
 
-                            let submittedByName = submittedBySlackId;
-                            try {
+                        let submittedByName = submittedBySlackId;
+                        try {
+                            if (submittedBySlackId) {
                                 const sInfo = await slack.users.info({
                                     user: submittedBySlackId,
                                 });
@@ -213,13 +182,16 @@ router.post(
                                     p.display_name ||
                                     p.real_name ||
                                     submittedBySlackId;
-                            } catch (e) {
-                                console.warn(
-                                    'Could not fetch submittedBy name',
-                                    e?.message || e
-                                );
                             }
+                        } catch (e) {
+                            console.warn(
+                                'Could not fetch submittedBy name',
+                                e?.message || e
+                            );
+                        }
 
+                        let notionResult;
+                        try {
                             notionResult = await createNotionTicket({
                                 booking,
                                 listing,
@@ -232,6 +204,8 @@ router.post(
                                 ),
                                 submittedByName,
                                 attachments_present,
+                                thread_channel: null,
+                                thread_ts: null,
                             });
                             console.log(
                                 '[slack] createNotionTicket returned:',
@@ -247,77 +221,72 @@ router.post(
                             console.error('[slack] Notion create failed ->', {
                                 message: err?.message,
                                 stack: err?.stack,
-                                response:
-                                    err?.response?.body ||
-                                    err?.response ||
-                                    null,
+                                response: err?.response || err?.body || null,
                             });
                             return;
                         }
 
+                        const attachmentsText = attachments_present
+                            ? 'Yes — upload files in this thread after creation.'
+                            : 'No';
+                        const text = `:rotating_light: *New Escalation Submitted*
+*Booking reference:* ${booking || '-'}
+*Listing:* ${listing || '-'}
+*Guest:* ${guest || '-'}
+*Issue type:* ${(issues || []).join(', ') || '-'}
+*Summary:*
+${summary || '-'}
+––––––––––––––––––––––––––––––––––––––––
+*Assigned to:* ${
+                            assigneeSlackInfos
+                                .map(a => `<@${a.slackId}>`)
+                                .join(', ') || '-'
+                        }
+*Submitted by:* ${submittedByName || '-'}
+*Attachments present:* ${attachmentsText}
+<${notionResult.url}|Open ticket in Notion>
+
+Please reply to this message in thread with any relevant update.`;
+
                         try {
                             const channel =
                                 process.env.SLACK_ESCALATIONS_CHANNEL;
-                            const attachmentsText = attachments_present
-                                ? 'Yes — upload files in this thread after creation.'
-                                : 'No';
-
-                            const text = `:rotating_light: *New Escalation Submitted*
-                                *Booking reference:* ${booking || '-'}
-                                *Listing:* ${listing || '-'}
-                                *Guest:* ${guest || '-'}
-                                *Issue type:* ${
-                                    (issues || []).join(', ') || '-'
-                                }
-                                *Summary:*
-                                ${summary || '-'}
-                                ––––––––––––––––––––––––––––––––––––––––
-                                *Assigned to:* ${
-                                    assignees
-                                        .map(id => `<@${id}>`)
-                                        .join(', ') || '-'
-                                }
-                                *Submitted by:* <@${submittedBySlackId}>
-                                *Attachments:* ${attachmentsText}
-                                <${notionResult.url}|Open ticket in Notion>
-
-                                Please reply to this message in thread with any relevant update.`;
-
                             const postResp = await slack.chat.postMessage({
                                 channel,
                                 text,
                             });
                             const { ts, channel: postedChannel } = postResp;
 
-                            const permalinkResp = (await slack.chat
-                                .getPermalink)
-                                ? await slack.chat.getPermalink({
-                                      channel: postedChannel,
-                                      message_ts: ts,
-                                  })
-                                : await slack.conversations.getPermalink({
-                                      channel: postedChannel,
-                                      message_ts: ts,
-                                  });
-
-                            const threadUrl = permalinkResp?.permalink || null;
-
-                            if (threadUrl) {
-                                try {
-                                    await updateNotionTicketWithThread(
-                                        notionResult.id,
-                                        {
-                                            thread_url: threadUrl,
-                                            thread_channel: postedChannel,
-                                            thread_ts: ts,
-                                        }
-                                    );
-                                } catch (err) {
-                                    console.warn(
-                                        'Failed to update notion with thread_url',
-                                        err
-                                    );
+                            try {
+                                const permalinkResp =
+                                    await slack.conversations.getPermalink({
+                                        channel: postedChannel,
+                                        message_ts: ts,
+                                    });
+                                const threadUrl =
+                                    permalinkResp?.permalink || null;
+                                if (threadUrl) {
+                                    try {
+                                        await updateNotionTicketWithThread(
+                                            notionResult.id,
+                                            {
+                                                thread_url: threadUrl,
+                                                thread_channel: postedChannel,
+                                                thread_ts: ts,
+                                            }
+                                        );
+                                    } catch (err) {
+                                        console.warn(
+                                            'Failed to update notion with thread_url',
+                                            err
+                                        );
+                                    }
                                 }
+                            } catch (e) {
+                                console.warn(
+                                    'Could not get permalink:',
+                                    e?.message || e
+                                );
                             }
 
                             try {
@@ -327,7 +296,13 @@ router.post(
                                     timestamp: ts,
                                 });
                             } catch (err) {
-                                console.warn('Could not add reaction', err);
+                                try {
+                                    await slack.reactions.add({
+                                        name: 'white_check_mark',
+                                        channel: postedChannel,
+                                        timestamp: ts,
+                                    });
+                                } catch (_) {}
                             }
                         } catch (err) {
                             console.error('Slack postMessage failed', err);
