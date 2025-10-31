@@ -243,29 +243,24 @@ router.post(
                         try {
                             const channel =
                                 process.env.SLACK_ESCALATIONS_CHANNEL;
-                            const text = [
-                                ':rotating_light: *New Escalation Submitted*',
-                                `*Booking reference:* ${booking || '-'}`,
-                                `*Listing:* ${listing || '-'}`,
-                                `*Guest:* ${guest || '-'}`,
-                                `*Issue type:* ${
-                                    (issues || []).join(', ') || '-'
-                                }`,
-                                `*Summary:*`,
-                                `${summary || '-'}`,
-                                '––––––––––––––––––––––––––––––––––––––––',
-                                `*Assigned to:* ${
-                                    assignees
-                                        .map(id => `<@${id}>`)
-                                        .join(', ') || '-'
-                                }`,
-                                `*Submitted by:* <@${submittedBySlackId}>`,
-                                `<${notionResult.url}|Open ticket in Notion>`,
-                                '',
-                                'Please reply to this message in thread with any relevant update.',
-                            ]
-                                .join('\n')
-                                .trim();
+                            const attachmentsText = attachments_present
+                                ? 'Yes — upload files in this thread after creation.'
+                                : 'No';
+
+                            const text = `:rotating_light: *New Escalation Submitted*
+                                *Booking reference:* ${booking || '-'}
+                                *Listing:* ${listing || '-'}
+                                *Guest:* ${guest || '-'}
+                                *Issue type:* ${(issues || []).join(', ') || '-'}
+                                *Summary:*
+                                ${summary || '-'}
+                                ––––––––––––––––––––––––––––––––––––––––
+                                *Assigned to:* ${assignees.map(id => `<@${id}>`).join(', ') || '-'}
+                                *Submitted by:* <@${submittedBySlackId}>
+                                *Attachments:* ${attachmentsText}
+                                <${notionResult.url}|Open ticket in Notion>
+
+                                Please reply to this message in thread with any relevant update.`;
 
                             const postResp = await slack.chat.postMessage({
                                 channel,
