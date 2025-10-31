@@ -506,17 +506,32 @@ router.post(
                     },
                     {
                         type: 'input',
-                        optional: true,
-                        block_id: 'input_block_id',
+                        block_id: 'attachments_block',
+                        element: {
+                            type: 'static_select',
+                            action_id: 'attachments_select',
+                            placeholder: {
+                                type: 'plain_text',
+                                text: 'Select option',
+                            },
+                            options: [
+                                {
+                                    text: { type: 'plain_text', text: 'Yes' },
+                                    value: 'yes',
+                                },
+                                {
+                                    text: { type: 'plain_text', text: 'No' },
+                                    value: 'no',
+                                },
+                            ],
+                        },
                         label: {
                             type: 'plain_text',
                             text: 'Attachments',
                         },
-                        element: {
-                            type: 'file_input',
-                            action_id: 'file_input_action_id_1',
-                            filetypes: ['jpg', 'png'],
-                            max_files: 5,
+                        hint: {
+                            type: 'plain_text',
+                            text: 'If Yes, upload the files in the Slack thread after ticket is created.',
                         },
                     },
                 ],
