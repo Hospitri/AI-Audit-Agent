@@ -164,7 +164,7 @@ function buildPropertyPayload(dbProperties, values = {}) {
         };
     }
 
-    const attProp = findPropByName(dbProperties, [
+    const attProp = findPropByNames(dbProperties, [
         'Attachments',
         'Attachment',
         'Has Attachments',
