@@ -90,29 +90,64 @@ router.post(
 
                 (async () => {
                     try {
-                        const vals = payload.view.state.values || {};
-                        const booking =
-                            vals.booking?.booking_ref?.value || null;
-                        const listing =
-                            vals.listing?.listing_name?.value || null;
-                        const guest = vals.guest?.guest_name?.value || null;
-                        const summary = vals.summary?.summary?.value || null;
-                        const issues = (
-                            vals.issue?.issue_type?.selected_options || []
-                        ).map(o => o.value);
-                        const assignees =
-                            vals.assign?.assignees?.selected_users || [];
-                        const submittedBySlackId = payload.user?.id || null;
-
-                        let attachments_present = false;
+                        let attachments = [];
                         try {
-                            const sel =
-                                vals.attachments_block?.attachments_select
-                                    ?.selected_option?.value;
-                            attachments_present = sel === 'yes';
+                            const filesSelected =
+                                vals.input_block_id?.file_input_action_id_1
+                                    ?.selected_files || [];
+
+                            for (const f of filesSelected) {
+                                try {
+                                    await slack.files.sharedPublicURL({
+                                        file: f.id,
+                                    });
+                                } catch (e) {
+                                    console.warn(
+                                        'sharedPublicURL error (ok if disabled):',
+                                        e?.data || e?.message || e
+                                    );
+                                }
+
+                                try {
+                                    const info = await slack.files.info({
+                                        file: f.id,
+                                    });
+                                    const fileObj = info?.file || null;
+
+                                    const pub =
+                                        fileObj?.permalink_public ||
+                                        fileObj?.url_private ||
+                                        null;
+
+                                    if (pub) {
+                                        attachments.push({
+                                            id: f.id,
+                                            url: pub,
+                                            name: fileObj?.name || f.id,
+                                        });
+                                    } else {
+                                        attachments.push({
+                                            id: f.id,
+                                            url: null,
+                                            name: fileObj?.name || f.id,
+                                        });
+                                    }
+                                } catch (e) {
+                                    console.warn(
+                                        'files.info failed for',
+                                        f.id,
+                                        e?.data || e?.message || e
+                                    );
+                                }
+                            }
                         } catch (e) {
-                            attachments_present = false;
+                            console.warn('attachments parsing failed', e);
                         }
+
+                        const attachmentUrls = attachments
+                            .map(a => a.url)
+                            .filter(Boolean);
+                        const attachments_present = attachmentUrls.length > 0;
 
                         const assigneeSlackInfos = [];
                         for (const sid of assignees) {
@@ -204,6 +239,7 @@ router.post(
                                 ),
                                 submittedByName,
                                 attachments_present,
+                                attachmentUrls,
                                 thread_channel: null,
                                 thread_ts: null,
                             });
@@ -226,27 +262,30 @@ router.post(
                             return;
                         }
 
-                        const attachmentsText = attachments_present
-                            ? 'Yes — upload files in this thread after creation.'
-                            : 'No';
-                        const text = `:rotating_light: *New Escalation Submitted*
-*Booking reference:* ${booking || '-'}
-*Listing:* ${listing || '-'}
-*Guest:* ${guest || '-'}
-*Issue type:* ${(issues || []).join(', ') || '-'}
-*Summary:*
-${summary || '-'}
-––––––––––––––––––––––––––––––––––––––––
-*Assigned to:* ${
-                            assigneeSlackInfos
-                                .map(a => `<@${a.slackId}>`)
-                                .join(', ') || '-'
-                        }
-*Submitted by:* ${submittedByName || '-'}
-*Attachments present:* ${attachmentsText}
-<${notionResult.url}|Open ticket in Notion>
+                        const attachmentsText = attachmentUrls.length
+                            ? '\nAttachments:\n' +
+                              attachmentUrls
+                                  .map(u => `<${u}|Archivo>`)
+                                  .join('\n')
+                            : '';
 
-Please reply to this message in thread with any relevant update.`;
+                        const text = `:rotating_light: *New Escalation Submitted*
+                            *Booking reference:* ${booking || '-'}
+                            *Listing:* ${listing || '-'}
+                            *Guest:* ${guest || '-'}
+                            *Issue type:* ${(issues || []).join(', ') || '-'}
+                            *Summary:*
+                            ${summary || '-'}
+                            ––––––––––––––––––––––––––––––––––––––––
+                            *Assigned to:* ${
+                                assignees.map(id => `<@${id}>`).join(', ') ||
+                                '-'
+                            }
+                            *Submitted by:* ${submittedByName}
+                            ${attachmentsText}
+                            <${notionResult.url}|Open ticket in Notion>
+
+                            Please reply to this message in thread with any relevant update.`;
 
                         try {
                             const channel =
@@ -254,6 +293,7 @@ Please reply to this message in thread with any relevant update.`;
                             const postResp = await slack.chat.postMessage({
                                 channel,
                                 text,
+                                mrkdwn: true,
                             });
                             const { ts, channel: postedChannel } = postResp;
 
@@ -280,17 +320,9 @@ Please reply to this message in thread with any relevant update.`;
                                     ).replace('.', '')}`;
                                 }
                             } catch (err) {
-                                try {
-                                    threadUrl = `https://slack.com/archives/${postedChannel}/p${String(
-                                        ts
-                                    ).replace('.', '')}`;
-                                } catch (e) {
-                                    console.warn(
-                                        'Could not construct fallback permalink:',
-                                        e?.message || e
-                                    );
-                                    threadUrl = null;
-                                }
+                                threadUrl = `https://slack.com/archives/${postedChannel}/p${String(
+                                    ts
+                                ).replace('.', '')}`;
                             }
 
                             if (notionResult && notionResult.id) {
@@ -301,6 +333,7 @@ Please reply to this message in thread with any relevant update.`;
                                             thread_url: threadUrl,
                                             thread_channel,
                                             thread_ts,
+                                            attachments_present,
                                         }
                                     );
                                 } catch (err) {
@@ -312,24 +345,24 @@ Please reply to this message in thread with any relevant update.`;
                             }
 
                             try {
+                                await slack.reactions.add({
+                                    name: 'new',
+                                    channel: postedChannel,
+                                    timestamp: ts,
+                                });
+                            } catch (_) {
                                 try {
-                                    await slack.reactions.add({
-                                        name: 'new',
-                                        channel: postedChannel,
-                                        timestamp: ts,
-                                    });
-                                } catch (_) {
                                     await slack.reactions.add({
                                         name: 'white_check_mark',
                                         channel: postedChannel,
                                         timestamp: ts,
                                     });
+                                } catch (e) {
+                                    console.warn(
+                                        'Could not add reaction',
+                                        e?.message || e
+                                    );
                                 }
-                            } catch (err) {
-                                console.warn(
-                                    'Could not add initial reaction',
-                                    err?.message || err
-                                );
                             }
                         } catch (err) {
                             console.error('Slack postMessage failed', err);
@@ -384,12 +417,16 @@ router.post(
                             action_id: 'booking_ref',
                             placeholder: {
                                 type: 'plain_text',
-                                text: 'e.g. ABC123',
+                                text: 'Reference number',
                             },
                         },
                         label: {
                             type: 'plain_text',
                             text: 'Booking reference',
+                        },
+                        hint: {
+                            type: 'plain_text',
+                            text: 'Enter the booking reference number.',
                         },
                     },
                     {
@@ -404,6 +441,10 @@ router.post(
                             },
                         },
                         label: { type: 'plain_text', text: 'Listing name' },
+                        hint: {
+                            type: 'plain_text',
+                            text: 'Enter the name of the listing.',
+                        },
                     },
                     {
                         type: 'input',
@@ -417,6 +458,10 @@ router.post(
                             },
                         },
                         label: { type: 'plain_text', text: 'Guest name' },
+                        hint: {
+                            type: 'plain_text',
+                            text: 'Enter guest name.',
+                        },
                     },
                     {
                         type: 'input',
@@ -467,6 +512,10 @@ router.post(
                             ],
                         },
                         label: { type: 'plain_text', text: 'Issue type' },
+                        hint: {
+                            type: 'plain_text',
+                            text: 'Choose related issue types.',
+                        },
                     },
                     {
                         type: 'input',
@@ -481,6 +530,10 @@ router.post(
                             },
                         },
                         label: { type: 'plain_text', text: 'Summary' },
+                        hint: {
+                            type: 'plain_text',
+                            text: "What's the escalation about?",
+                        },
                     },
                     {
                         type: 'input',
@@ -497,32 +550,20 @@ router.post(
                     },
                     {
                         type: 'input',
-                        block_id: 'attachments_block',
-                        element: {
-                            type: 'static_select',
-                            action_id: 'attachments_select',
-                            placeholder: {
-                                type: 'plain_text',
-                                text: 'Select option',
-                            },
-                            options: [
-                                {
-                                    text: { type: 'plain_text', text: 'Yes' },
-                                    value: 'yes',
-                                },
-                                {
-                                    text: { type: 'plain_text', text: 'No' },
-                                    value: 'no',
-                                },
-                            ],
-                        },
+                        optional: true,
+                        block_id: 'input_block_id',
                         label: {
                             type: 'plain_text',
                             text: 'Attachments',
                         },
                         hint: {
                             type: 'plain_text',
-                            text: 'If Yes, upload the files in the Slack thread after ticket is created.',
+                            text: 'Provide any support files.',
+                        },
+                        element: {
+                            type: 'file_input',
+                            action_id: 'file_input_action_id_1',
+                            max_files: 5,
                         },
                     },
                 ],
