@@ -164,14 +164,33 @@ function buildPropertyPayload(dbProperties, values = {}) {
         };
     }
 
-    const attProp = prop('Attachments') || prop('Attachment');
+    const attProp = findPropByName(dbProperties, [
+        'Attachments',
+        'Attachment',
+        'Has Attachments',
+    ]);
     if (attProp) {
-        if (attProp.type === 'checkbox') {
-            props[attProp.name] = { checkbox: !!attachments_present };
-        } else {
-            props[attProp.name] = {
+        const name = attProp.key;
+        if (attProp.prop.type === 'checkbox') {
+            props[name] = { checkbox: Boolean(values.attachments_present) };
+        } else if (attProp.prop.type === 'files') {
+            props[name] = {
                 rich_text: [
-                    { text: { content: attachments_present ? 'Yes' : 'No' } },
+                    {
+                        text: {
+                            content: (values.attachmentUrls || []).join(', '),
+                        },
+                    },
+                ],
+            };
+        } else {
+            props[name] = {
+                rich_text: [
+                    {
+                        text: {
+                            content: values.attachments_present ? 'Yes' : 'No',
+                        },
+                    },
                 ],
             };
         }
