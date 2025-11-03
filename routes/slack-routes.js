@@ -291,10 +291,7 @@ router.post(
 *Summary:*
 ${summary || '-'}
 ––––––––––––––––––––––––––––––––––––––––
-*Assigned to:* ${
-    assignees.map(id => `<@${id}>`).join(', ') ||
-    '-'
-}
+*Assigned to:* ${assignees.map(id => `<@${id}>`).join(', ') || '-'}
 *Submitted by:* ${submittedByName}
 ${attachmentsText}
 <${notionResult.url}|Open ticket in Notion>
