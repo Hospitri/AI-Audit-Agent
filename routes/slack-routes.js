@@ -284,22 +284,22 @@ router.post(
                             : '';
 
                         const text = `:rotating_light: *New Escalation Submitted*
-                            *Booking reference:* ${booking || '-'}
-                            *Listing:* ${listing || '-'}
-                            *Guest:* ${guest || '-'}
-                            *Issue type:* ${(issues || []).join(', ') || '-'}
-                            *Summary:*
-                            ${summary || '-'}
-                            ––––––––––––––––––––––––––––––––––––––––
-                            *Assigned to:* ${
-                                assignees.map(id => `<@${id}>`).join(', ') ||
-                                '-'
-                            }
-                            *Submitted by:* ${submittedByName}
-                            ${attachmentsText}
-                            <${notionResult.url}|Open ticket in Notion>
+*Booking reference:* ${booking || '-'}
+*Listing:* ${listing || '-'}
+*Guest:* ${guest || '-'}
+*Issue type:* ${(issues || []).join(', ') || '-'}
+*Summary:*
+${summary || '-'}
+––––––––––––––––––––––––––––––––––––––––
+*Assigned to:* ${
+    assignees.map(id => `<@${id}>`).join(', ') ||
+    '-'
+}
+*Submitted by:* ${submittedByName}
+${attachmentsText}
+<${notionResult.url}|Open ticket in Notion>
 
-                            Please reply to this message in thread with any relevant update.`;
+Please reply to this message in thread with any relevant update.`;
 
                         try {
                             const channel =
