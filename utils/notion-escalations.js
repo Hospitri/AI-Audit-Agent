@@ -262,7 +262,7 @@ async function createNotionTicket(data = {}) {
     const payload = {
         parent: { database_id: dbId },
         properties,
-        template_id: '2a0af90f362380469d6ffb5f9c60c94b',
+        template_id: '29baf90f36238017aca2f83ae3ec1749',
     };
 
     console.log('[notion] creating page, payload sample:', {
