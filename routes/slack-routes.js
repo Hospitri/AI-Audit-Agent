@@ -112,6 +112,9 @@ router.post(
                             vals.input_block_id?.file_input_action_id_1
                                 ?.files || [];
                         const attachments_present = filesSelected.length > 0;
+                        const firstFile = attachments_present
+                            ? filesSelected[0]
+                            : null;
 
                         const assigneeSlackInfos = [];
                         for (const sid of assignees) {
@@ -190,14 +193,24 @@ router.post(
                         const channel = process.env.SLACK_ESCALATIONS_CHANNEL;
                         let ts, postedChannel;
 
-                        if (filesSelected.length === 1) {
+                        const mdText = buildMarkdownText({
+                            booking,
+                            listing,
+                            guest,
+                            issues,
+                            summary,
+                            assignees,
+                            submittedByName,
+                            notionUrl: notionResult.url,
+                        });
+
+                        if (firstFile) {
                             console.log(
                                 '[slack] 1 file found. Uploading with files.upload...'
                             );
-                            const file = filesSelected[0];
 
                             const fileInfo = await slack.files.info({
-                                file: file.id,
+                                file: firstFile.id,
                             });
                             const downloadUrl =
                                 fileInfo.file?.url_private_download;
@@ -208,21 +221,10 @@ router.post(
                                 responseType: 'arraybuffer',
                             });
 
-                            const mdText = buildMarkdownText({
-                                booking,
-                                listing,
-                                guest,
-                                issues,
-                                summary,
-                                assignees,
-                                submittedByName,
-                                notionUrl: notionResult.url,
-                            });
-
                             const uploadResp = await slack.files.upload({
                                 channels: channel,
                                 file: response.data,
-                                filename: file.name,
+                                filename: firstFile.name,
                                 initial_comment: mdText,
                             });
 
@@ -230,77 +232,16 @@ router.post(
                             postedChannel = channel;
                         } else {
                             console.log(
-                                `[slack] ${filesSelected.length} files found. Using chat.postMessage + thread replies.`
+                                '[slack] 0 files found. Using chat.postMessage...'
                             );
-
-                            const blocks = [
-                                {
-                                    type: 'section',
-                                    text: {
-                                        type: 'mrkdwn',
-                                        text: `:rotating_light: *New Escalation Submitted*\n*Booking reference:* ${
-                                            booking || '-'
-                                        }\n*Listing:* ${
-                                            listing || '-'
-                                        }\n*Guest:* ${
-                                            guest || '-'
-                                        }\n*Issue type:* ${
-                                            (issues || []).join(', ') || '-'
-                                        }\n*Summary:*\n${
-                                            summary || '-'
-                                        }\n––––––––––––––––––––––––––––––––––––––––\n*Assigned to:* ${
-                                            assignees
-                                                .map(id => `<@${id}>`)
-                                                .join(', ') || '-'
-                                        }\n*Submitted by:* ${submittedByName}\n<${
-                                            notionResult.url
-                                        }|Open ticket in Notion>\n\nPlease reply to this message in thread with any relevant update.`,
-                                    },
-                                },
-                            ];
 
                             const postResp = await slack.chat.postMessage({
                                 channel,
-                                blocks,
-                                text: `New escalation: ${
-                                    listing || booking || 'ticket'
-                                }`,
+                                text: mdText,
+                                mrkdwn: true,
                             });
                             ts = postResp.ts;
                             postedChannel = postResp.channel;
-
-                            const uploadPromises = filesSelected.map(
-                                async file => {
-                                    try {
-                                        const fileInfo = await slack.files.info(
-                                            { file: file.id }
-                                        );
-                                        const downloadUrl =
-                                            fileInfo.file?.url_private_download;
-                                        const response = await axios.get(
-                                            downloadUrl,
-                                            {
-                                                headers: {
-                                                    Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
-                                                },
-                                                responseType: 'arraybuffer',
-                                            }
-                                        );
-                                        await slack.files.upload({
-                                            channels: postedChannel,
-                                            thread_ts: ts,
-                                            file: response.data,
-                                            filename: file.name,
-                                        });
-                                    } catch (uploadErr) {
-                                        console.error(
-                                            `[slack] Failed to upload file ${file.name} to thread`,
-                                            uploadErr?.message
-                                        );
-                                    }
-                                }
-                            );
-                            await Promise.allSettled(uploadPromises);
                         }
 
                         let threadUrl = null;
