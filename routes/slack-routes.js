@@ -99,7 +99,9 @@ router.post(
                             vals.assign?.assignees?.selected_users || [];
                         const submittedBySlackId = payload.user?.id || null;
 
-                        const filesSelected = payload.files || [];
+                        const filesSelected =
+                            vals.input_block_id?.file_input_action_id_1
+                                ?.files || [];
 
                         let attachments = [];
                         try {
