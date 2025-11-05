@@ -313,33 +313,37 @@ async function updateNotionTicketWithThread(pageId, fields = {}) {
     if (!dbIdRaw) throw new Error('NOTION_ESCALATIONS_DB_ID not set');
     const dbId = normalizeDbId(dbIdRaw);
 
-    const db = await notion.databases.retrieve({ database_id: dbId });
+    let db;
+    try {
+        db = await notion.databases.retrieve({ database_id: dbId });
+    } catch (dbErr) {
+        console.error(
+            '[notion] update: failed to retrieve database',
+            dbErr?.message
+        );
+        return;
+    }
+
     const dbProps = db.properties || {};
+    const updatePayload = {};
+
     const threadProp =
         dbProps['Thread URL'] ||
         dbProps['Thread_URL'] ||
         dbProps['Thread'] ||
         null;
 
-    if (!threadProp) {
-        const payload = {
-            page_id: pageId,
-            properties: {
-                'Thread URL': {
-                    rich_text: [{ text: { content: fields.thread_url || '' } }],
-                },
-            },
-        };
-        await notion.pages.update(payload);
-        return;
-    }
-
-    const propName = threadProp.name;
-    let updatePayload = {};
-    if (threadProp.type === 'url') {
-        updatePayload[propName] = { url: fields.thread_url || null };
-    } else {
-        updatePayload[propName] = {
+    if (threadProp && fields.thread_url) {
+        const propName = threadProp.name;
+        if (threadProp.type === 'url') {
+            updatePayload[propName] = { url: fields.thread_url || null };
+        } else {
+            updatePayload[propName] = {
+                rich_text: [{ text: { content: fields.thread_url || '' } }],
+            };
+        }
+    } else if (fields.thread_url) {
+        updatePayload['Thread URL'] = {
             rich_text: [{ text: { content: fields.thread_url || '' } }],
         };
     }
@@ -348,22 +352,56 @@ async function updateNotionTicketWithThread(pageId, fields = {}) {
         dbProps['Thread Channel ID'] ||
         dbProps['Thread_Channel_ID'] ||
         dbProps['Thread Channel'];
+
     if (threadChannelProp && fields.thread_channel) {
         updatePayload[threadChannelProp.name] = {
             rich_text: [{ text: { content: String(fields.thread_channel) } }],
         };
     }
+
     const threadTsProp =
         dbProps['Thread TS'] ||
         dbProps['Thread_TS'] ||
         dbProps['Thread Timestamp'];
+
     if (threadTsProp && fields.thread_ts) {
         updatePayload[threadTsProp.name] = {
             rich_text: [{ text: { content: String(fields.thread_ts) } }],
         };
     }
 
-    await notion.pages.update({ page_id: pageId, properties: updatePayload });
+    const attProp =
+        dbProps['Attachments'] ||
+        dbProps['Attachment'] ||
+        dbProps['Has Attachments'];
+
+    if (
+        attProp &&
+        attProp.type === 'checkbox' &&
+        fields.attachments_present !== undefined
+    ) {
+        updatePayload[attProp.name] = {
+            checkbox: Boolean(fields.attachments_present),
+        };
+    }
+
+    if (Object.keys(updatePayload).length === 0) {
+        console.warn('[notion] update: No properties found to update.');
+        return;
+    }
+
+    try {
+        console.log(
+            '[notion] Updating page with thread fields:',
+            Object.keys(updatePayload)
+        );
+        await notion.pages.update({
+            page_id: pageId,
+            properties: updatePayload,
+        });
+    } catch (updateErr) {
+        console.error('[notion] pages.update failed', updateErr?.message);
+    }
 }
 
 module.exports = {
