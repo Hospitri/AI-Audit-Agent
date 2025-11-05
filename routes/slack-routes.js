@@ -206,7 +206,7 @@ router.post(
 
                         if (firstFile) {
                             console.log(
-                                '[slack] 1 file found. Uploading with files.upload...'
+                                '[slack] 1 file found. Uploading with files.uploadV2...'
                             );
 
                             const fileInfo = await slack.files.info({
@@ -221,14 +221,14 @@ router.post(
                                 responseType: 'arraybuffer',
                             });
 
-                            const uploadResp = await slack.files.upload({
-                                channels: channel,
+                            const uploadResp = await slack.files.uploadV2({
+                                channel_id: channel,
                                 file: response.data,
                                 filename: firstFile.name,
                                 initial_comment: mdText,
                             });
 
-                            ts = uploadResp.file.shares.public[channel][0].ts;
+                            ts = uploadResp.file.ts;
                             postedChannel = channel;
                         } else {
                             console.log(
