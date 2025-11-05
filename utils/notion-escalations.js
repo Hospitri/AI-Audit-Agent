@@ -174,15 +174,17 @@ function buildPropertyPayload(dbProperties, values = {}) {
         'Attachments',
         'Attachment',
         'Has Attachments',
+        'Has attachments',
+        'Attachments Present',
     ]);
     if (attProp) {
         const name = attProp.key;
         const type = attProp.prop?.type;
         if (type === 'checkbox') {
-            props[name] = { checkbox: Boolean(attachments_present) };
+            props[name] = { checkbox: Boolean(values.attachments_present) };
         } else if (type === 'files') {
             props[name] = {
-                files: (attachmentUrls || []).map(url => ({
+                files: (values.attachmentUrls || []).map(url => ({
                     name: (url || '').split('/').pop() || 'file',
                     type: 'external',
                     external: { url },
@@ -191,7 +193,11 @@ function buildPropertyPayload(dbProperties, values = {}) {
         } else {
             props[name] = {
                 rich_text: [
-                    { text: { content: attachments_present ? 'Yes' : 'No' } },
+                    {
+                        text: {
+                            content: values.attachments_present ? 'Yes' : 'No',
+                        },
+                    },
                 ],
             };
         }

@@ -130,6 +130,7 @@ router.post(
 
                                     const pub =
                                         fileObj?.permalink_public ||
+                                        fileObj?.permalink ||
                                         fileObj?.url_private ||
                                         null;
 
@@ -276,35 +277,80 @@ router.post(
                             return;
                         }
 
-                        const attachmentsText = attachmentUrls.length
+                        const attachmentUrlsPublic = [];
+
+                        for (const a of attachments) {
+                            try {
+                                await slack.files.sharedPublicURL({
+                                    file: a.id,
+                                });
+                            } catch (e) {}
+                            try {
+                                const info = await slack.files.info({
+                                    file: a.id,
+                                });
+                                const fileObj = info?.file || {};
+                                const pub =
+                                    fileObj?.permalink_public ||
+                                    fileObj?.permalink ||
+                                    fileObj?.url_private ||
+                                    null;
+                                if (pub)
+                                    attachmentUrlsPublic.push({
+                                        url: pub,
+                                        name: fileObj?.name || a.name,
+                                    });
+                            } catch (e) {
+                                console.warn(
+                                    'files.info failed for',
+                                    a.id,
+                                    e?.data || e?.message || e
+                                );
+                            }
+                        }
+
+                        const attachmentsText = attachmentUrlsPublic.length
                             ? '\nAttachments:\n' +
-                              attachmentUrls
-                                  .map(u => `<${u}|Archivo>`)
+                              attachmentUrlsPublic
+                                  .map(u => `<${u.url}|${u.name}>`)
                                   .join('\n')
                             : '';
 
-                        const text = `:rotating_light: *New Escalation Submitted*
-*Booking reference:* ${booking || '-'}
-*Listing:* ${listing || '-'}
-*Guest:* ${guest || '-'}
-*Issue type:* ${(issues || []).join(', ') || '-'}
-*Summary:*
-${summary || '-'}
-––––––––––––––––––––––––––––––––––––––––
-*Assigned to:* ${assignees.map(id => `<@${id}>`).join(', ') || '-'}
-*Submitted by:* ${submittedByName}
-${attachmentsText}
-<${notionResult.url}|Open ticket in Notion>
-
-Please reply to this message in thread with any relevant update.`;
+                        const blocks = [
+                            {
+                                type: 'section',
+                                text: {
+                                    type: 'mrkdwn',
+                                    text: `:rotating_light: *New Escalation Submitted*\n*Booking reference:* ${
+                                        booking || '-'
+                                    }\n*Listing:* ${listing || '-'}\n*Guest:* ${
+                                        guest || '-'
+                                    }\n*Issue type:* ${
+                                        (issues || []).join(', ') || '-'
+                                    }\n*Summary:*\n${
+                                        summary || '-'
+                                    }\n––––––––––––––––––––––––––––––––––––––––\n*Assigned to:* ${
+                                        assignees
+                                            .map(id => `<@${id}>`)
+                                            .join(', ') || '-'
+                                    }\n*Submitted by:* ${submittedByName}\n${attachmentsText}\n<${
+                                        notionResult.url
+                                    }|Open ticket in Notion>\n\nPlease reply to this message in thread with any relevant update.`,
+                                },
+                            },
+                        ];
 
                         try {
                             const channel =
                                 process.env.SLACK_ESCALATIONS_CHANNEL;
                             const postResp = await slack.chat.postMessage({
                                 channel,
-                                text,
-                                mrkdwn: true,
+                                blocks,
+                                text: `New escalation: ${
+                                    listing || booking || 'ticket'
+                                }`,
+                                unfurl_links: true,
+                                unfurl_media: true,
                             });
                             const { ts, channel: postedChannel } = postResp;
 
