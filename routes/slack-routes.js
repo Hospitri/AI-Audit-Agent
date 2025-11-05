@@ -36,6 +36,35 @@ function verifySlackSignature(rawBody, req) {
     return timingSafeCompare(computed, sig);
 }
 
+function buildMarkdownText(data) {
+    const {
+        booking,
+        listing,
+        guest,
+        issues = [],
+        summary,
+        assignees = [],
+        submittedByName,
+        notionUrl,
+    } = data;
+
+    const assigneesText = assignees.map(id => `<@${id}>`).join(', ') || '-';
+
+    return `:rotating_light: *New Escalation Submitted*
+*Booking reference:* ${booking || '-'}
+*Listing:* ${listing || '-'}
+*Guest:* ${guest || '-'}
+*Issue type:* ${(issues || []).join(', ') || '-'}
+*Summary:*
+${summary || '-'}
+––––––––––––––––––––––––––––––––––––––––
+*Assigned to:* ${assigneesText}
+*Submitted by:* ${submittedByName}
+<${notionUrl}|Open ticket in Notion>
+
+Please reply to this message in thread with any relevant update.`;
+}
+
 router.post(
     '/interactivity',
     bodyParser.raw({ type: '*/*' }),
@@ -43,17 +72,12 @@ router.post(
         try {
             const raw = req.body.toString('utf8');
             if (!verifySlackSignature(raw, req)) {
-                console.warn(
-                    '[slack/interactivity] signature verification failed'
-                );
                 return res.status(400).send('invalid signature');
             }
 
             const params = new URLSearchParams(raw);
             const payloadStr = params.get('payload');
-            if (!payloadStr) {
-                return res.status(400).send('missing payload');
-            }
+            if (!payloadStr) return res.status(400).send('missing payload');
 
             let payload;
             try {
@@ -87,7 +111,6 @@ router.post(
                         const filesSelected =
                             vals.input_block_id?.file_input_action_id_1
                                 ?.files || [];
-
                         const attachments_present = filesSelected.length > 0;
 
                         const assigneeSlackInfos = [];
@@ -119,14 +142,9 @@ router.post(
                                 const nid = await getNotionUserIdByEmail(
                                     info.email
                                 );
-                                if (nid) {
-                                    notionAssigneeIds.push(nid);
-                                }
+                                if (nid) notionAssigneeIds.push(nid);
                             } catch (err) {
-                                console.error(
-                                    'Could not map Slack user to Notion',
-                                    err
-                                );
+                                console.error('Could not map Slack user', err);
                             }
                         }
 
@@ -143,7 +161,6 @@ router.post(
                                     submittedBySlackId;
                             }
                         } catch (e) {}
-
                         let notionResult;
                         try {
                             notionResult = await createNotionTicket({
@@ -170,44 +187,87 @@ router.post(
                             return;
                         }
 
-                        const blocks = [
-                            {
-                                type: 'section',
-                                text: {
-                                    type: 'mrkdwn',
-                                    text: `:rotating_light: *New Escalation Submitted*\n*Booking reference:* ${
-                                        booking || '-'
-                                    }\n*Listing:* ${listing || '-'}\n*Guest:* ${
-                                        guest || '-'
-                                    }\n*Issue type:* ${
-                                        (issues || []).join(', ') || '-'
-                                    }\n*Summary:*\n${
-                                        summary || '-'
-                                    }\n––––––––––––––––––––––––––––––––––––––––\n*Assigned to:* ${
-                                        assignees
-                                            .map(id => `<@${id}>`)
-                                            .join(', ') || '-'
-                                    }\n*Submitted by:* ${submittedByName}\n<${
-                                        notionResult.url
-                                    }|Open ticket in Notion>\n\nPlease reply to this message in thread with any relevant update.`,
-                                },
-                            },
-                        ];
-
                         const channel = process.env.SLACK_ESCALATIONS_CHANNEL;
-                        const postResp = await slack.chat.postMessage({
-                            channel,
-                            blocks,
-                            text: `New escalation: ${
-                                listing || booking || 'ticket'
-                            }`,
-                        });
-                        const { ts, channel: postedChannel } = postResp;
+                        let ts, postedChannel;
 
-                        if (filesSelected.length > 0) {
+                        if (filesSelected.length === 1) {
                             console.log(
-                                `[slack] ${filesSelected.length} files found. Uploading to thread...`
+                                '[slack] 1 file found. Uploading with files.upload...'
                             );
+                            const file = filesSelected[0];
+
+                            const fileInfo = await slack.files.info({
+                                file: file.id,
+                            });
+                            const downloadUrl =
+                                fileInfo.file?.url_private_download;
+                            const response = await axios.get(downloadUrl, {
+                                headers: {
+                                    Authorization: `Bearer ${process.env.SLACK_BOT_TOKEN}`,
+                                },
+                                responseType: 'arraybuffer',
+                            });
+
+                            const mdText = buildMarkdownText({
+                                booking,
+                                listing,
+                                guest,
+                                issues,
+                                summary,
+                                assignees,
+                                submittedByName,
+                                notionUrl: notionResult.url,
+                            });
+
+                            const uploadResp = await slack.files.upload({
+                                channels: channel,
+                                file: response.data,
+                                filename: file.name,
+                                initial_comment: mdText,
+                            });
+
+                            ts = uploadResp.file.shares.public[channel][0].ts;
+                            postedChannel = channel;
+                        } else {
+                            console.log(
+                                `[slack] ${filesSelected.length} files found. Using chat.postMessage + thread replies.`
+                            );
+
+                            const blocks = [
+                                {
+                                    type: 'section',
+                                    text: {
+                                        type: 'mrkdwn',
+                                        text: `:rotating_light: *New Escalation Submitted*\n*Booking reference:* ${
+                                            booking || '-'
+                                        }\n*Listing:* ${
+                                            listing || '-'
+                                        }\n*Guest:* ${
+                                            guest || '-'
+                                        }\n*Issue type:* ${
+                                            (issues || []).join(', ') || '-'
+                                        }\n*Summary:*\n${
+                                            summary || '-'
+                                        }\n––––––––––––––––––––––––––––––––––––––––\n*Assigned to:* ${
+                                            assignees
+                                                .map(id => `<@${id}>`)
+                                                .join(', ') || '-'
+                                        }\n*Submitted by:* ${submittedByName}\n<${
+                                            notionResult.url
+                                        }|Open ticket in Notion>\n\nPlease reply to this message in thread with any relevant update.`,
+                                    },
+                                },
+                            ];
+
+                            const postResp = await slack.chat.postMessage({
+                                channel,
+                                blocks,
+                                text: `New escalation: ${
+                                    listing || booking || 'ticket'
+                                }`,
+                            });
+                            ts = postResp.ts;
+                            postedChannel = postResp.channel;
 
                             const uploadPromises = filesSelected.map(
                                 async file => {
@@ -217,14 +277,6 @@ router.post(
                                         );
                                         const downloadUrl =
                                             fileInfo.file?.url_private_download;
-
-                                        if (!downloadUrl) {
-                                            console.warn(
-                                                `[slack] Could not get download URL for file ${file.id}`
-                                            );
-                                            return;
-                                        }
-
                                         const response = await axios.get(
                                             downloadUrl,
                                             {
@@ -234,7 +286,6 @@ router.post(
                                                 responseType: 'arraybuffer',
                                             }
                                         );
-
                                         await slack.files.upload({
                                             channels: postedChannel,
                                             thread_ts: ts,
@@ -249,9 +300,7 @@ router.post(
                                     }
                                 }
                             );
-
                             await Promise.allSettled(uploadPromises);
-                            console.log('[slack] File uploads finished.');
                         }
 
                         let threadUrl = null;
@@ -274,15 +323,15 @@ router.post(
                                     notionResult.id,
                                     {
                                         thread_url: threadUrl,
-                                        thread_channel,
-                                        thread_ts,
+                                        thread_channel: postedChannel,
+                                        thread_ts: ts,
                                         attachments_present,
                                     }
                                 );
                             } catch (err) {
                                 console.warn(
                                     'Failed to update notion with thread fields',
-                                    err?.message || err
+                                    err?.message
                                 );
                             }
                         }
@@ -301,10 +350,8 @@ router.post(
                         );
                     }
                 })();
-
                 return;
             }
-
             res.status(200).send();
         } catch (err) {
             console.error('[slack/interactivity] verify error', err);
@@ -319,16 +366,12 @@ router.post(
     async (req, res) => {
         try {
             const raw = req.body.toString('utf8');
-
             if (!verifySlackSignature(raw, req)) {
                 return res.status(400).send('invalid signature');
             }
-
             const params = Object.fromEntries(new URLSearchParams(raw));
-            const { command, text, user_id, trigger_id } = params;
-
+            const { trigger_id } = params;
             res.status(200).send();
-
             const view = {
                 type: 'modal',
                 callback_id: 'escalation_modal',
@@ -495,13 +538,9 @@ router.post(
                     },
                 ],
             };
-
             await slack.views.open({ trigger_id, view });
         } catch (err) {
             console.error('slash error', err);
-            try {
-                if (!res.headersSent) res.status(500).send();
-            } catch (e) {}
         }
     }
 );
