@@ -12,8 +12,6 @@ const router = express.Router();
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
 const SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
 
-const notionUserEmailCache = new Map();
-
 function timingSafeCompare(a, b) {
     try {
         return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -49,9 +47,6 @@ router.post(
                 sig: req.headers['x-slack-signature'],
             });
             if (!verifySlackSignature(raw, req)) {
-                console.warn(
-                    '[slack/interactivity] signature verification failed'
-                );
                 console.warn(
                     '[slack/interactivity] signature verification failed'
                 );
@@ -104,12 +99,12 @@ router.post(
                             vals.assign?.assignees?.selected_users || [];
                         const submittedBySlackId = payload.user?.id || null;
 
+                        const filesSelected =
+                            vals.input_block_id?.file_input_action_id_1
+                                ?.selected_files || [];
+
                         let attachments = [];
                         try {
-                            const filesSelected =
-                                vals.input_block_id?.file_input_action_id_1
-                                    ?.selected_files || [];
-
                             for (const f of filesSelected) {
                                 try {
                                     await slack.files.sharedPublicURL({
@@ -122,30 +117,21 @@ router.post(
                                     );
                                 }
 
+                                let fileUrl = null;
+                                let fileName = f.id;
                                 try {
                                     const info = await slack.files.info({
                                         file: f.id,
                                     });
                                     const fileObj = info?.file || null;
 
-                                    const pub =
-                                        fileObj?.permalink_public ||
-                                        fileObj?.permalink ||
-                                        fileObj?.url_private ||
-                                        null;
-
-                                    if (pub) {
-                                        attachments.push({
-                                            id: f.id,
-                                            url: pub,
-                                            name: fileObj?.name || f.id,
-                                        });
-                                    } else {
-                                        attachments.push({
-                                            id: f.id,
-                                            url: null,
-                                            name: fileObj?.name || f.id,
-                                        });
+                                    if (fileObj) {
+                                        fileName = fileObj.name || f.id;
+                                        fileUrl =
+                                            fileObj.permalink_public ||
+                                            fileObj.permalink ||
+                                            fileObj.url_private ||
+                                            null;
                                     }
                                 } catch (e) {
                                     console.warn(
@@ -154,6 +140,12 @@ router.post(
                                         e?.data || e?.message || e
                                     );
                                 }
+
+                                attachments.push({
+                                    id: f.id,
+                                    url: fileUrl,
+                                    name: fileName,
+                                });
                             }
                         } catch (e) {
                             console.warn('attachments parsing failed', e);
@@ -162,7 +154,8 @@ router.post(
                         const attachmentUrls = attachments
                             .map(a => a.url)
                             .filter(Boolean);
-                        const attachments_present = attachmentUrls.length > 0;
+
+                        const attachments_present = filesSelected.length > 0;
 
                         const assigneeSlackInfos = [];
                         for (const sid of assignees) {
@@ -277,42 +270,10 @@ router.post(
                             return;
                         }
 
-                        const attachmentUrlsPublic = [];
-
-                        for (const a of attachments) {
-                            try {
-                                await slack.files.sharedPublicURL({
-                                    file: a.id,
-                                });
-                            } catch (e) {}
-                            try {
-                                const info = await slack.files.info({
-                                    file: a.id,
-                                });
-                                const fileObj = info?.file || {};
-                                const pub =
-                                    fileObj?.permalink_public ||
-                                    fileObj?.permalink ||
-                                    fileObj?.url_private ||
-                                    null;
-                                if (pub)
-                                    attachmentUrlsPublic.push({
-                                        url: pub,
-                                        name: fileObj?.name || a.name,
-                                    });
-                            } catch (e) {
-                                console.warn(
-                                    'files.info failed for',
-                                    a.id,
-                                    e?.data || e?.message || e
-                                );
-                            }
-                        }
-
-                        const attachmentsText = attachmentUrlsPublic.length
+                        const attachmentsText = attachments.length
                             ? '\nAttachments:\n' +
-                              attachmentUrlsPublic
-                                  .map(u => `<${u.url}|${u.name}>`)
+                              attachments
+                                  .map(a => `<${a.url}|${a.name}>`)
                                   .join('\n')
                             : '';
 

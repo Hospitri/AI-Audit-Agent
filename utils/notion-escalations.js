@@ -181,10 +181,10 @@ function buildPropertyPayload(dbProperties, values = {}) {
         const name = attProp.key;
         const type = attProp.prop?.type;
         if (type === 'checkbox') {
-            props[name] = { checkbox: Boolean(values.attachments_present) };
+            props[name] = { checkbox: Boolean(attachments_present) };
         } else if (type === 'files') {
             props[name] = {
-                files: (values.attachmentUrls || []).map(url => ({
+                files: (attachmentUrls || []).map(url => ({
                     name: (url || '').split('/').pop() || 'file',
                     type: 'external',
                     external: { url },
@@ -195,7 +195,7 @@ function buildPropertyPayload(dbProperties, values = {}) {
                 rich_text: [
                     {
                         text: {
-                            content: values.attachments_present ? 'Yes' : 'No',
+                            content: attachments_present ? 'Yes' : 'No',
                         },
                     },
                 ],
@@ -264,16 +264,33 @@ async function createNotionTicket(data = {}) {
             title: [{ text: { content: data.listing || 'Ticket' } }],
         };
     }
+    const templateId = process.env.NOTION_TEMPLATE_ID;
+    let templateChildren = [];
+
+    if (templateId) {
+        try {
+            const response = await notion.blocks.children.list({
+                block_id: templateId,
+            });
+            templateChildren = response.results || [];
+        } catch (e) {
+            console.warn(
+                `[notion] Could not retrieve template children for ID ${templateId}`,
+                e?.message
+            );
+        }
+    }
 
     const payload = {
         parent: { database_id: dbId },
         properties,
-        template_id: '29baf90f36238017aca2f83ae3ec1749',
+        children: templateChildren.length ? templateChildren : undefined,
     };
 
     console.log('[notion] creating page, payload sample:', {
         dbId,
         propertiesSent: Object.keys(properties),
+        usingTemplateChildren: templateChildren.length > 0,
     });
 
     try {
