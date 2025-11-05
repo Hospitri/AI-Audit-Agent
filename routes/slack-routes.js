@@ -273,7 +273,8 @@ router.post(
                         const attachmentsText = attachments.length
                             ? '\nAttachments:\n' +
                               attachments
-                                  .map(a => `<${a.url}|${a.name}>`)
+                                  .map(a => a.url)
+                                  .filter(Boolean)
                                   .join('\n')
                             : '';
 
