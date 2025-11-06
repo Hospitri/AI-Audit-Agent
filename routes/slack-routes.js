@@ -260,6 +260,13 @@ router.post(
 
                         if (notionResult && notionResult.id) {
                             try {
+                                console.log('[slack] Sending to Notion:', {
+                                    id: notionResult.id,
+                                    thread_url: threadUrl,
+                                    thread_channel: postedChannel,
+                                    thread_ts: ts,
+                                    attachments_present,
+                                });
                                 await updateNotionTicketWithThread(
                                     notionResult.id,
                                     {

@@ -313,94 +313,87 @@ async function updateNotionTicketWithThread(pageId, fields = {}) {
     if (!dbIdRaw) throw new Error('NOTION_ESCALATIONS_DB_ID not set');
     const dbId = normalizeDbId(dbIdRaw);
 
+    console.log('[notion] update: Receiving fields:', fields);
+
     let db;
     try {
         db = await notion.databases.retrieve({ database_id: dbId });
     } catch (dbErr) {
-        console.error(
-            '[notion] update: failed to retrieve database',
-            dbErr?.message
-        );
+        console.error('[notion] update: Failed to get DB', dbErr?.message);
         return;
     }
 
     const dbProps = db.properties || {};
     const updatePayload = {};
 
-    const threadProp =
-        dbProps['Thread URL'] ||
-        dbProps['Thread_URL'] ||
-        dbProps['Thread'] ||
-        null;
+    console.log('[notion] update: DB props found:', {
+        hasUrl: dbProps.hasOwnProperty('Thread URL'),
+        hasChannel: dbProps.hasOwnProperty('Thread Channel ID'),
+        hasTs: dbProps.hasOwnProperty('Thread TS'),
+    });
 
-    if (threadProp && fields.thread_url) {
-        const propName = threadProp.name;
-        if (threadProp.type === 'url') {
-            updatePayload[propName] = { url: fields.thread_url || null };
+    if (dbProps['Thread URL'] && fields.thread_url) {
+        if (dbProps['Thread URL'].type === 'url') {
+            updatePayload['Thread URL'] = { url: fields.thread_url };
         } else {
-            updatePayload[propName] = {
-                rich_text: [{ text: { content: fields.thread_url || '' } }],
-            };
+            console.warn('[notion] update: "Thread URL" is not type URL');
         }
-    } else if (fields.thread_url) {
-        updatePayload['Thread URL'] = {
-            rich_text: [{ text: { content: fields.thread_url || '' } }],
-        };
     }
 
-    const threadChannelProp =
-        dbProps['Thread Channel ID'] ||
-        dbProps['Thread_Channel_ID'] ||
-        dbProps['Thread Channel'];
-
-    if (threadChannelProp && fields.thread_channel) {
-        updatePayload[threadChannelProp.name] = {
-            rich_text: [{ text: { content: String(fields.thread_channel) } }],
-        };
+    if (dbProps['Thread Channel ID'] && fields.thread_channel) {
+        if (dbProps['Thread Channel ID'].type === 'rich_text') {
+            updatePayload['Thread Channel ID'] = {
+                rich_text: [
+                    { text: { content: String(fields.thread_channel) } },
+                ],
+            };
+        } else {
+            console.warn(
+                '[notion] update: "Thread Channel ID" is not rich_text type'
+            );
+        }
     }
 
-    const threadTsProp =
-        dbProps['Thread TS'] ||
-        dbProps['Thread_TS'] ||
-        dbProps['Thread Timestamp'];
-
-    if (threadTsProp && fields.thread_ts) {
-        updatePayload[threadTsProp.name] = {
-            rich_text: [{ text: { content: String(fields.thread_ts) } }],
-        };
+    if (dbProps['Thread TS'] && fields.thread_ts) {
+        if (dbProps['Thread TS'].type === 'rich_text') {
+            updatePayload['Thread TS'] = {
+                rich_text: [{ text: { content: String(fields.thread_ts) } }],
+            };
+        } else {
+            console.warn('[notion] update: "Thread TS" is not rich_text type');
+        }
     }
-
-    const attProp =
-        dbProps['Attachments'] ||
-        dbProps['Attachment'] ||
-        dbProps['Has Attachments'];
 
     if (
-        attProp &&
-        attProp.type === 'checkbox' &&
+        dbProps['Attachments'] &&
+        dbProps['Attachments'].type === 'checkbox' &&
         fields.attachments_present !== undefined
     ) {
-        updatePayload[attProp.name] = {
+        updatePayload['Attachments'] = {
             checkbox: Boolean(fields.attachments_present),
         };
     }
 
     if (Object.keys(updatePayload).length === 0) {
-        console.warn('[notion] update: No properties found to update.');
+        console.warn('[notion] update: Nothing to update.');
         return;
     }
 
     try {
         console.log(
-            '[notion] Updating page with thread fields:',
-            Object.keys(updatePayload)
+            '[notion] update: Sending payload to Notion:',
+            JSON.stringify(updatePayload, null, 2)
         );
         await notion.pages.update({
             page_id: pageId,
             properties: updatePayload,
         });
+        console.log('[notion] update: Successfuly updated');
     } catch (updateErr) {
-        console.error('[notion] pages.update failed', updateErr?.message);
+        console.error(
+            '[notion] update: pages.update failed',
+            updateErr?.message
+        );
     }
 }
 
