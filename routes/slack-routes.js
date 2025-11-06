@@ -335,25 +335,31 @@ router.post(
                             }
                         }
 
-                        try {
-                            await slack.reactions.add({
-                                name: 'new',
-                                channel: postedChannel,
-                                timestamp: ts,
-                            });
-                        } catch (_) {
+                        if (ts) {
                             try {
                                 await slack.reactions.add({
-                                    name: 'white_check_mark',
+                                    name: 'new',
                                     channel: postedChannel,
                                     timestamp: ts,
                                 });
-                            } catch (e) {
-                                console.warn(
-                                    'Could not add reaction',
-                                    e?.message || e
-                                );
+                            } catch (_) {
+                                try {
+                                    await slack.reactions.add({
+                                        name: 'white_check_mark',
+                                        channel: postedChannel,
+                                        timestamp: ts,
+                                    });
+                                } catch (e) {
+                                    console.warn(
+                                        'Could not add reaction',
+                                        e?.message || e
+                                    );
+                                }
                             }
+                        } else {
+                            console.warn(
+                                "[slack] 'ts' is null, skipping reaction."
+                            );
                         }
                     } catch (err) {
                         console.error(
