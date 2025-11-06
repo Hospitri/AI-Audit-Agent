@@ -228,7 +228,7 @@ router.post(
                                 initial_comment: mdText,
                             });
 
-                            ts = uploadResp.file.ts;
+                            ts = uploadResp.file.shares.public[channel][0].ts;
                             postedChannel = channel;
                         } else {
                             console.log(
