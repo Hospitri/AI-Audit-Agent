@@ -228,31 +228,32 @@ router.post(
                                 initial_comment: mdText,
                             });
 
-                            if (
-                                !uploadResp.ok ||
-                                !uploadResp.files ||
-                                uploadResp.files.length === 0
-                            ) {
+                            console.log(
+                                '[slack] ------ RAW uploadV2 RESPONSE ------'
+                            );
+                            console.log(JSON.stringify(uploadResp, null, 2));
+                            console.log(
+                                '[slack] ------ END RAW RESPONSE ------'
+                            );
+
+                            if (!uploadResp.ok) {
                                 console.error(
-                                    '[slack] files.uploadV2 failed (Top Level). Response:',
+                                    '[slack] files.uploadV2 failed (ok: false). Response:',
                                     uploadResp
                                 );
                                 return;
                             }
-                            const fileUploadResult = uploadResp.files[0];
-                            if (
-                                !fileUploadResult.ok ||
-                                !fileUploadResult.files ||
-                                fileUploadResult.files.length === 0
-                            ) {
+
+                            const fileUploadResult = uploadResp.files?.[0];
+                            const uploadedFile = fileUploadResult?.files?.[0];
+
+                            if (!uploadedFile) {
                                 console.error(
-                                    '[slack] files.uploadV2 failed (Inner File). Response:',
-                                    fileUploadResult
+                                    '[slack] files.uploadV2 OK, but could not parse the nested file response.',
+                                    uploadResp
                                 );
                                 return;
                             }
-                            const uploadedFile = fileUploadResult.files[0];
-
                             ts =
                                 uploadedFile.shares?.public?.[channel]?.[0]?.ts;
                             postedChannel = channel;
@@ -263,6 +264,14 @@ router.post(
                                 );
                                 ts = uploadedFile.ts;
                             }
+
+                            console.log('[slack] Extracted ts values:', {
+                                shares_ts:
+                                    uploadedFile.shares?.public?.[channel]?.[0]
+                                        ?.ts,
+                                fallback_ts: uploadedFile.ts,
+                                final_ts: ts,
+                            });
                         } else {
                             console.log(
                                 '[slack] 0 files found. Using chat.postMessage...'
