@@ -260,16 +260,16 @@ router.post(
 
                             if (!ts) {
                                 console.warn(
-                                    "[slack] Could not get message 'ts' from shares. Using file 'ts' as fallback."
+                                    "[slack] Could not get message 'ts' from shares. Using file 'timestamp' as fallback."
                                 );
-                                ts = uploadedFile.ts;
+                                ts = uploadedFile.timestamp;
                             }
 
                             console.log('[slack] Extracted ts values:', {
                                 shares_ts:
                                     uploadedFile.shares?.public?.[channel]?.[0]
                                         ?.ts,
-                                fallback_ts: uploadedFile.ts,
+                                fallback_ts: uploadedFile.timestamp,
                                 final_ts: ts,
                             });
                         } else {
