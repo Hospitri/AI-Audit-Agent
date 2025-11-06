@@ -228,24 +228,29 @@ router.post(
                                 initial_comment: mdText,
                             });
 
-                            if (!uploadResp.ok || !uploadResp.file) {
+                            if (
+                                !uploadResp.ok ||
+                                !uploadResp.files ||
+                                uploadResp.files.length === 0
+                            ) {
                                 console.error(
-                                    '[slack] files.uploadV2 failed. Slack response:',
+                                    '[slack] files.uploadV2 failed. Response:',
                                     uploadResp
                                 );
                                 return;
                             }
 
+                            const uploadedFile = uploadResp.files[0];
+
                             ts =
-                                uploadResp.file.shares?.public?.[channel]?.[0]
-                                    ?.ts;
+                                uploadedFile.shares?.public?.[channel]?.[0]?.ts;
                             postedChannel = channel;
 
                             if (!ts) {
                                 console.warn(
-                                    "[slack] Couldn't get 'ts' of shared message. Using file ts as fallback."
+                                    "[slack] Could not get message 'ts' from shares. Using file 'ts' as fallback."
                                 );
-                                ts = uploadResp.file.ts;
+                                ts = uploadedFile.ts;
                             }
                         } else {
                             console.log(
@@ -276,14 +281,18 @@ router.post(
                         }
 
                         if (notionResult && notionResult.id) {
-                            try {
-                                console.log('[slack] Sending to Notion:', {
+                            console.log(
+                                '[slack] Data to send to Notion (update):',
+                                {
                                     id: notionResult.id,
                                     thread_url: threadUrl,
                                     thread_channel: postedChannel,
                                     thread_ts: ts,
                                     attachments_present,
-                                });
+                                }
+                            );
+
+                            try {
                                 await updateNotionTicketWithThread(
                                     notionResult.id,
                                     {
@@ -307,7 +316,20 @@ router.post(
                                 channel: postedChannel,
                                 timestamp: ts,
                             });
-                        } catch (_) {}
+                        } catch (_) {
+                            try {
+                                await slack.reactions.add({
+                                    name: 'white_check_mark',
+                                    channel: postedChannel,
+                                    timestamp: ts,
+                                });
+                            } catch (e) {
+                                console.warn(
+                                    'Could not add reaction',
+                                    e?.message || e
+                                );
+                            }
+                        }
                     } catch (err) {
                         console.error(
                             'Async background interactivity error',
