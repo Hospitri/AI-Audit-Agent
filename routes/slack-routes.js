@@ -228,8 +228,25 @@ router.post(
                                 initial_comment: mdText,
                             });
 
-                            ts = uploadResp.file.shares.public[channel][0].ts;
+                            if (!uploadResp.ok || !uploadResp.file) {
+                                console.error(
+                                    '[slack] files.uploadV2 failed. Slack response:',
+                                    uploadResp
+                                );
+                                return;
+                            }
+
+                            ts =
+                                uploadResp.file.shares?.public?.[channel]?.[0]
+                                    ?.ts;
                             postedChannel = channel;
+
+                            if (!ts) {
+                                console.warn(
+                                    "[slack] Couldn't get 'ts' of shared message. Using file ts as fallback."
+                                );
+                                ts = uploadResp.file.ts;
+                            }
                         } else {
                             console.log(
                                 '[slack] 0 files found. Using chat.postMessage...'
