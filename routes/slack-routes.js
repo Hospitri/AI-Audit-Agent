@@ -260,16 +260,15 @@ router.post(
 
                             if (!ts) {
                                 console.warn(
-                                    "[slack] Could not get message 'ts' from shares. Using file 'timestamp' as fallback."
+                                    "[slack] Could not get message 'ts' from shares. 'ts' will be null."
                                 );
-                                ts = uploadedFile.timestamp;
+                                ts = null;
                             }
 
                             console.log('[slack] Extracted ts values:', {
                                 shares_ts:
                                     uploadedFile.shares?.public?.[channel]?.[0]
                                         ?.ts,
-                                fallback_ts: uploadedFile.timestamp,
                                 final_ts: ts,
                             });
                         } else {
@@ -287,17 +286,23 @@ router.post(
                         }
 
                         let threadUrl = null;
-                        try {
-                            const permalinkResp =
-                                await slack.conversations.getPermalink({
-                                    channel: postedChannel,
-                                    message_ts: ts,
-                                });
-                            threadUrl = permalinkResp?.permalink || null;
-                        } catch (err) {
-                            threadUrl = `https://slack.com/archives/${postedChannel}/p${String(
-                                ts
-                            ).replace('.', '')}`;
+                        if (ts) {
+                            try {
+                                const permalinkResp =
+                                    await slack.conversations.getPermalink({
+                                        channel: postedChannel,
+                                        message_ts: ts,
+                                    });
+                                threadUrl = permalinkResp?.permalink || null;
+                            } catch (err) {
+                                threadUrl = `https://slack.com/archives/${postedChannel}/p${String(
+                                    ts
+                                ).replace('.', '')}`;
+                            }
+                        } else {
+                            console.warn(
+                                "[slack] 'ts' is null, 'threadUrl' will also be null."
+                            );
                         }
 
                         if (notionResult && notionResult.id) {
