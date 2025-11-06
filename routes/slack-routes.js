@@ -228,19 +228,14 @@ router.post(
                                 initial_comment: mdText,
                             });
 
-                            if (
-                                !uploadResp.ok ||
-                                !uploadResp.files ||
-                                uploadResp.files.length === 0
-                            ) {
+                            if (!uploadResp.ok || !uploadResp.file) {
                                 console.error(
                                     '[slack] files.uploadV2 failed. Response:',
                                     uploadResp
                                 );
                                 return;
                             }
-
-                            const uploadedFile = uploadResp.files[0];
+                            const uploadedFile = uploadResp.file;
 
                             ts =
                                 uploadedFile.shares?.public?.[channel]?.[0]?.ts;
