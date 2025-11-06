@@ -228,14 +228,30 @@ router.post(
                                 initial_comment: mdText,
                             });
 
-                            if (!uploadResp.ok || !uploadResp.file) {
+                            if (
+                                !uploadResp.ok ||
+                                !uploadResp.files ||
+                                uploadResp.files.length === 0
+                            ) {
                                 console.error(
-                                    '[slack] files.uploadV2 failed. Response:',
+                                    '[slack] files.uploadV2 failed (Top Level). Response:',
                                     uploadResp
                                 );
                                 return;
                             }
-                            const uploadedFile = uploadResp.file;
+                            const fileUploadResult = uploadResp.files[0];
+                            if (
+                                !fileUploadResult.ok ||
+                                !fileUploadResult.files ||
+                                fileUploadResult.files.length === 0
+                            ) {
+                                console.error(
+                                    '[slack] files.uploadV2 failed (Inner File). Response:',
+                                    fileUploadResult
+                                );
+                                return;
+                            }
+                            const uploadedFile = fileUploadResult.files[0];
 
                             ts =
                                 uploadedFile.shares?.public?.[channel]?.[0]?.ts;
