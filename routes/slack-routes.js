@@ -50,13 +50,15 @@ async function findMessageTsInHistory(channel, botId, fileId, retries = 5) {
             }
 
             console.warn(
-                `[slack] Message not found on attempt ${i + 1}. Retrying...`
+                `[slack] Message (fileId: ${fileId}) not found on attempt ${
+                    i + 1
+                }. Retrying...`
             );
             await new Promise(resolve => setTimeout(resolve, 1000));
         } catch (historyErr) {
             console.error(
                 '[slack] Error fetching channel history:',
-                historyErr
+                historyErr?.data || historyErr
             );
             return null;
         }
@@ -263,7 +265,7 @@ router.post(
 
                         if (firstFile) {
                             console.log(
-                                '[slack] 1 file found. Uploading with files.uploadV2...'
+                                `[slack] 1 file found (Modal ID: ${firstFile.id}). Uploading with files.uploadV2...`
                             );
 
                             const fileInfo = await slack.files.info({
@@ -278,21 +280,52 @@ router.post(
                                 responseType: 'arraybuffer',
                             });
 
-                            await slack.files.uploadV2({
+                            const uploadResp = await slack.files.uploadV2({
                                 channel_id: channel,
                                 file: response.data,
                                 filename: firstFile.name,
                                 initial_comment: mdText,
                             });
 
+                            if (
+                                !uploadResp.ok ||
+                                !uploadResp.files ||
+                                uploadResp.files.length === 0
+                            ) {
+                                console.error(
+                                    '[slack] files.uploadV2 failed (Top Level). Response:',
+                                    uploadResp
+                                );
+                                return;
+                            }
+                            const fileUploadResult = uploadResp.files[0];
+                            if (
+                                !fileUploadResult.ok ||
+                                !fileUploadResult.files ||
+                                fileUploadResult.files.length === 0
+                            ) {
+                                console.error(
+                                    '[slack] files.uploadV2 failed (Inner File). Response:',
+                                    fileUploadResult
+                                );
+                                return;
+                            }
+
+                            const newUploadedFile = fileUploadResult.files[0];
+                            const newFileId = newUploadedFile.id;
+
+                            console.log(
+                                `[slack] File re-uploaded. New Channel ID: ${newFileId}`
+                            );
+
                             console.warn(
-                                "[slack] 'shares' object from uploadV2 is unreliable. Polling channel history for message 'ts'..."
+                                "[slack] Polling channel history for message 'ts' using NEW file ID..."
                             );
 
                             ts = await findMessageTsInHistory(
                                 channel,
                                 BOT_USER_ID,
-                                firstFile.id
+                                newFileId
                             );
                         } else {
                             console.log(
