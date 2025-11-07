@@ -13,6 +13,21 @@ const router = express.Router();
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
 const SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
 
+let BOT_USER_ID = null;
+
+async function getBotUserId() {
+    if (BOT_USER_ID) return BOT_USER_ID;
+    try {
+        const authTest = await slack.auth.test();
+        BOT_USER_ID = authTest.user_id;
+        console.log(`[slack] Bot User ID cached: ${BOT_USER_ID}`);
+        return BOT_USER_ID;
+    } catch (e) {
+        console.error('[slack] Could not get bot user ID via auth.test', e);
+        return null;
+    }
+}
+
 function timingSafeCompare(a, b) {
     try {
         return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -94,6 +109,7 @@ router.post(
 
                 (async () => {
                     try {
+                        await getBotUserId();
                         const vals = payload.view.state.values || {};
                         const booking =
                             vals.booking?.booking_ref?.value || null;
@@ -191,7 +207,8 @@ router.post(
                         }
 
                         const channel = process.env.SLACK_ESCALATIONS_CHANNEL;
-                        let ts, postedChannel;
+                        let ts = null;
+                        let postedChannel = channel;
 
                         const mdText = buildMarkdownText({
                             booking,
@@ -221,57 +238,50 @@ router.post(
                                 responseType: 'arraybuffer',
                             });
 
-                            const uploadResp = await slack.files.uploadV2({
+                            await slack.files.uploadV2({
                                 channel_id: channel,
                                 file: response.data,
                                 filename: firstFile.name,
                                 initial_comment: mdText,
                             });
 
-                            console.log(
-                                '[slack] ------ RAW uploadV2 RESPONSE ------'
+                            console.warn(
+                                "[slack] 'shares' object from uploadV2 is unreliable. Searching for message in channel history..."
                             );
-                            console.log(JSON.stringify(uploadResp, null, 2));
-                            console.log(
-                                '[slack] ------ END RAW RESPONSE ------'
-                            );
+                            try {
+                                await new Promise(resolve =>
+                                    setTimeout(resolve, 1000)
+                                );
 
-                            if (!uploadResp.ok) {
+                                const history =
+                                    await slack.conversations.history({
+                                        channel: channel,
+                                        limit: 5,
+                                    });
+                                const sentMessage = history.messages.find(
+                                    m =>
+                                        m.user === BOT_USER_ID &&
+                                        m.files?.some(
+                                            f => f.name === firstFile.name
+                                        )
+                                );
+
+                                if (sentMessage) {
+                                    ts = sentMessage.ts;
+                                    console.log(
+                                        `[slack] Found message in history with ts: ${ts}`
+                                    );
+                                } else {
+                                    console.error(
+                                        '[slack] Could not find the message with attachment in recent channel history.'
+                                    );
+                                }
+                            } catch (historyErr) {
                                 console.error(
-                                    '[slack] files.uploadV2 failed (ok: false). Response:',
-                                    uploadResp
+                                    '[slack] Error fetching channel history:',
+                                    historyErr
                                 );
-                                return;
                             }
-
-                            const fileUploadResult = uploadResp.files?.[0];
-                            const uploadedFile = fileUploadResult?.files?.[0];
-
-                            if (!uploadedFile) {
-                                console.error(
-                                    '[slack] files.uploadV2 OK, but could not parse the nested file response.',
-                                    uploadResp
-                                );
-                                return;
-                            }
-                            console.log('[slack] uploadedFile:', uploadedFile);
-                            ts =
-                                uploadedFile.shares?.public?.[channel]?.[0]?.ts;
-                            postedChannel = channel;
-
-                            if (!ts) {
-                                console.warn(
-                                    "[slack] Could not get message 'ts' from shares. 'ts' will be null."
-                                );
-                                ts = null;
-                            }
-
-                            console.log('[slack] Extracted ts values:', {
-                                shares_ts:
-                                    uploadedFile.shares?.public?.[channel]?.[0]
-                                        ?.ts,
-                                final_ts: ts,
-                            });
                         } else {
                             console.log(
                                 '[slack] 0 files found. Using chat.postMessage...'
@@ -283,7 +293,6 @@ router.post(
                                 mrkdwn: true,
                             });
                             ts = postResp.ts;
-                            postedChannel = postResp.channel;
                         }
 
                         let threadUrl = null;
