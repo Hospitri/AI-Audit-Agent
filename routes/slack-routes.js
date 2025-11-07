@@ -28,6 +28,46 @@ async function getBotUserId() {
     }
 }
 
+async function findMessageTsInHistory(channel, botId, fileId, retries = 5) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const history = await slack.conversations.history({
+                channel: channel,
+                limit: 10,
+            });
+
+            const sentMessage = history.messages.find(
+                m => m.user === botId && m.files?.some(f => f.id === fileId)
+            );
+
+            if (sentMessage) {
+                console.log(
+                    `[slack] Found message in history on attempt ${
+                        i + 1
+                    } with ts: ${sentMessage.ts}`
+                );
+                return sentMessage.ts;
+            }
+
+            console.warn(
+                `[slack] Message not found on attempt ${i + 1}. Retrying...`
+            );
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        } catch (historyErr) {
+            console.error(
+                '[slack] Error fetching channel history:',
+                historyErr
+            );
+            return null;
+        }
+    }
+
+    console.error(
+        `[slack] Could not find message with file ID ${fileId} after ${retries} attempts.`
+    );
+    return null;
+}
+
 function timingSafeCompare(a, b) {
     try {
         return crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -246,42 +286,14 @@ router.post(
                             });
 
                             console.warn(
-                                "[slack] 'shares' object from uploadV2 is unreliable. Searching for message in channel history..."
+                                "[slack] 'shares' object from uploadV2 is unreliable. Polling channel history for message 'ts'..."
                             );
-                            try {
-                                await new Promise(resolve =>
-                                    setTimeout(resolve, 1000)
-                                );
 
-                                const history =
-                                    await slack.conversations.history({
-                                        channel: channel,
-                                        limit: 5,
-                                    });
-                                const sentMessage = history.messages.find(
-                                    m =>
-                                        m.user === BOT_USER_ID &&
-                                        m.files?.some(
-                                            f => f.name === firstFile.name
-                                        )
-                                );
-
-                                if (sentMessage) {
-                                    ts = sentMessage.ts;
-                                    console.log(
-                                        `[slack] Found message in history with ts: ${ts}`
-                                    );
-                                } else {
-                                    console.error(
-                                        '[slack] Could not find the message with attachment in recent channel history.'
-                                    );
-                                }
-                            } catch (historyErr) {
-                                console.error(
-                                    '[slack] Error fetching channel history:',
-                                    historyErr
-                                );
-                            }
+                            ts = await findMessageTsInHistory(
+                                channel,
+                                BOT_USER_ID,
+                                firstFile.id
+                            );
                         } else {
                             console.log(
                                 '[slack] 0 files found. Using chat.postMessage...'
