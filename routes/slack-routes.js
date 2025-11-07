@@ -254,6 +254,7 @@ router.post(
                                 );
                                 return;
                             }
+                            console.log('[slack] uploadedFile:', uploadedFile);
                             ts =
                                 uploadedFile.shares?.public?.[channel]?.[0]?.ts;
                             postedChannel = channel;
