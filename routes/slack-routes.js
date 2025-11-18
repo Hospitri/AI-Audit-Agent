@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { WebClient } = require('@slack/web-api');
 const bodyParser = require('body-parser');
 const axios = require('axios');
+const { pool: db } = require('../db');
 const {
     createNotionTicket,
     updateNotionTicketWithThread,
@@ -617,5 +618,68 @@ router.post(
         }
     }
 );
+
+router.post('/events', bodyParser.raw({ type: '*/*' }), async (req, res) => {
+    try {
+        const rawBody = req.body.toString('utf8');
+
+        if (!verifySlackSignature(rawBody, req)) {
+            console.warn('[slack/events] Invalid signature');
+            return res.status(400).send('invalid signature');
+        }
+
+        const body = JSON.parse(rawBody);
+        const { type, challenge, event } = body;
+
+        if (type === 'url_verification') {
+            console.log('[slack] Verifying events endpoint...');
+            return res.status(200).send(challenge);
+        }
+
+        if (type === 'event_callback') {
+            res.status(200).send();
+
+            if (event.type === 'message' && !event.bot_id && !event.subtype) {
+                const targetChannel = process.env.SLACK_COMMUNICATIONS_CHANNEL;
+
+                if (event.channel === targetChannel) {
+                    console.log(
+                        `[slack] New message received in ${targetChannel}:`,
+                        event.ts
+                    );
+
+                    try {
+                        await db.query(
+                            `INSERT INTO slack_messages 
+                                (message_ts, thread_ts, user_id, channel_id, message_text, created_at)
+                                VALUES ($1, $2, $3, $4, $5, NOW())
+                                ON CONFLICT (message_ts) DO NOTHING`,
+                            [
+                                event.ts,
+                                event.thread_ts || null,
+                                event.user,
+                                event.channel,
+                                event.text,
+                            ]
+                        );
+                        console.log('[db] Message saved successfully');
+                    } catch (dbError) {
+                        console.error(
+                            '[db] Failed to save Slack message:',
+                            dbError
+                        );
+                    }
+                }
+            }
+            return;
+        }
+
+        return res.status(200).send();
+    } catch (err) {
+        console.error('[slack/events] Error processing request:', err);
+        if (!res.headersSent)
+            return res.status(500).send('Internal Server Error');
+    }
+});
 
 module.exports = router;

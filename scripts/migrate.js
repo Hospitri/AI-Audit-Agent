@@ -4,7 +4,7 @@ const path = require('path');
 const { Pool } = require('pg');
 
 const sql = fs.readFileSync(
-    path.resolve(__dirname, '../db/migrations/004_add_meeting_url.sql'),
+    path.resolve(__dirname, '../db/migrations/005_slack_messages.sql'),
     'utf8'
 );
 
