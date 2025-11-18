@@ -631,6 +631,11 @@ router.post('/events', bodyParser.raw({ type: '*/*' }), async (req, res) => {
         const body = JSON.parse(rawBody);
         const { type, challenge, event } = body;
 
+        console.log(
+            '[slack] Incoming Event Body (Raw):',
+            JSON.stringify(body, null, 2)
+        );
+
         if (type === 'url_verification') {
             console.log('[slack] Verifying events endpoint...');
             return res.status(200).send(challenge);
