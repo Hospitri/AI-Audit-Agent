@@ -3,7 +3,7 @@ const crypto = require('crypto');
 const { WebClient } = require('@slack/web-api');
 const bodyParser = require('body-parser');
 const axios = require('axios');
-const { pool: db } = require('../db');
+const { pool: db } = require('../utils/db.js');
 const {
     createNotionTicket,
     updateNotionTicketWithThread,
