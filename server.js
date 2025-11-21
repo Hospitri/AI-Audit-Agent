@@ -9,8 +9,35 @@ const bodyParser = require('body-parser');
 const auditRouter = require('./routes/audit');
 const hashPii = require('./routes/hash-pii');
 const slackRoutes = require('./routes/slack-routes');
+const cron = require('node-cron');
+const { processReport } = require('./utils/report-processor');
 
 const app = express();
+
+const TIMEZONE = 'America/Argentina/Buenos_Aires';
+
+cron.schedule(
+    '0 18 * * *',
+    () => {
+        console.log('[Cron] Executing ON-HOURS Report (18:00)...');
+        processReport('ON_HOURS');
+    },
+    {
+        timezone: TIMEZONE,
+    }
+);
+
+cron.schedule(
+    '0 9 * * *',
+    () => {
+        console.log('[Cron] Executing OFF-HOURS Report (09:00)...');
+        processReport('OFF_HOURS');
+    },
+    {
+        timezone: TIMEZONE,
+    }
+);
+
 app.use('/slack', slackRoutes);
 app.use(bodyParser.json());
 app.use('/api/audit', auditRouter);
