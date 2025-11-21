@@ -2,15 +2,82 @@ const { Configuration, OpenAIApi } = require('openai');
 const { pool: db } = require('./db.js');
 const { WebClient } = require('@slack/web-api');
 
+const TARGET_MODEL = 'gpt-4o-mini';
+const MAX_TOKENS_PER_CHUNK = 4000;
+const TARGET_CHANNEL_ID = process.env.SLACK_SUMMARY_CHANNEL;
+const BATCH_DURATION_HOURS = 3;
+
 const configuration = new Configuration({
     apiKey: process.env.OPENAI_API_KEY,
 });
 const openai = new OpenAIApi(configuration);
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
 
-const TIMEZONE = 'America/Argentina/Buenos_Aires';
-const BATCH_DURATION_HOURS = 3;
-const TARGET_CHANNEL_ID = process.env.SLACK_SUMMARY_CHANNEL;
+async function generateSubSummaries(messages, reportType) {
+    const batches = createBatches(messages, BATCH_DURATION_HOURS);
+    const subSummaries = [];
+
+    const L1_SYSTEM_PROMPT = `You are a summary assistant. Your task is to process a batch of raw Slack communications. Filter out noise (repeated questions, greetings, reactions). Focus strictly on identifying: 1. Problems reported (with owner/property if mentioned). 2. Actions taken. 3. Pending items and next steps. Output only a concise summary of these points.`;
+
+    for (const batch of batches) {
+        const batchText = batch
+            .map(msg => `${msg.user_id}: ${msg.message_text}`)
+            .join('\n');
+
+        try {
+            const completion = await openai.createChatCompletion({
+                model: TARGET_MODEL,
+                messages: [
+                    { role: 'system', content: L1_SYSTEM_PROMPT },
+                    {
+                        role: 'user',
+                        content: `Process the following messages:\n\n${batchText}`,
+                    },
+                ],
+                max_tokens: 500,
+                temperature: 0.2,
+            });
+            subSummaries.push(
+                completion.data.choices[0].message.content.trim()
+            );
+        } catch (e) {
+            console.error('[GPT_L1] Error generating sub-summary:', e.message);
+            subSummaries.push(
+                `[ERROR: Sub-summary failed for batch starting at ${new Date(
+                    parseFloat(batch[0].message_ts) * 1000
+                ).toISOString()}. Please check logs.]`
+            );
+        }
+    }
+
+    return subSummaries;
+}
+
+async function generateFinalReport(subSummaries, reportType) {
+    const allSummariesText = subSummaries.join('\n---\n');
+
+    const L2_SYSTEM_PROMPT = `You are an executive operations manager. You are receiving several daily summaries of Slack activity. Consolidate them into a final structured report. The report MUST be formatted strictly with the following three markdown headings: "Resolved Issues", "Pending / Escalated", and "Notable Events / Trends". Analyze the input to detect recurrence or critical nature. Output only the structured report text.`;
+
+    try {
+        const completion = await openai.createChatCompletion({
+            model: TARGET_MODEL,
+            messages: [
+                { role: 'system', content: L2_SYSTEM_PROMPT },
+                {
+                    role: 'user',
+                    content: `Summaries to consolidate: \n\n${allSummariesText}`,
+                },
+            ],
+            max_tokens: 1000,
+            temperature: 0.1,
+        });
+
+        return completion.data.choices[0].message.content.trim();
+    } catch (e) {
+        console.error('[GPT_L2] Error generating final report:', e.message);
+        return `Report Generation Failed for ${reportType}. Sub-summaries collected: ${subSummaries.length}`;
+    }
+}
 
 function getReportTimeRange(reportType) {
     const now = new Date();
@@ -33,7 +100,7 @@ function getReportTimeRange(reportType) {
 async function fetchUnprocessedMessages(startTime, endTime) {
     try {
         const result = await db.query(
-            `SELECT message_text, user_id, message_ts, thread_ts
+            `SELECT message_text, user_id, message_ts, thread_ts, id
              FROM slack_messages 
              WHERE created_at >= $1 
                AND created_at < $2 
@@ -83,19 +150,19 @@ function createBatches(messages, durationHours) {
     return batches;
 }
 
-async function publishReport(reportContent, reportType) {
+async function publishReport(finalReportContent, reportType) {
     const reportTitle = `AI Daily Ops Digest – ${reportType} (${new Date().toDateString()})`;
 
     try {
         await slack.chat.postMessage({
             channel: TARGET_CHANNEL_ID,
-            text: reportContent,
+            text: reportTitle,
             mrkdwn: true,
             attachments: [
                 {
                     color: reportType === 'ON_HOURS' ? '#4CAF50' : '#FF9800',
                     title: reportTitle,
-                    text: reportContent,
+                    text: finalReportContent,
                     mrkdwn_in: ['text'],
                 },
             ],
@@ -114,14 +181,14 @@ async function publishReport(reportContent, reportType) {
 async function markMessagesAsProcessed(messages, reportId) {
     if (messages.length === 0) return;
 
-    const messageIds = messages.map(msg => msg.id);
+    const messageTSs = messages.map(msg => msg.message_ts);
 
     try {
         await db.query(
             `UPDATE slack_messages 
              SET processed_report_id = $1 
              WHERE message_ts = ANY($2::text[])`,
-            [reportId, messageIds]
+            [reportId, messageTSs]
         );
         console.log(
             `[Processor] ${messages.length} messages marked as processed.`
@@ -134,60 +201,6 @@ async function markMessagesAsProcessed(messages, reportId) {
     }
 }
 
-async function generateSubSummaries(messages, reportType) {
-    const batches = createBatches(messages, BATCH_DURATION_HOURS);
-    const subSummaries = [];
-
-    const L1_PROMPT = `You are a summary assistant. Your task is to process a batch of raw Slack communications. Filter out noise (repeated questions, excessive reactions, greetings). Focus on identifying problems reported, actions taken, and the current status of any pending item. Output only the summarized text. MESSAGES: \n\n`;
-
-    for (const batch of batches) {
-        const batchText = batch
-            .map(msg => `${msg.user_id}: ${msg.message_text}`)
-            .join('\n');
-
-        try {
-            const completion = await openai.createCompletion({
-                model: 'text-davinci-003',
-                prompt: L1_PROMPT + batchText,
-                max_tokens: 500,
-                temperature: 0.2,
-            });
-            subSummaries.push(completion.data.choices[0].text.trim());
-        } catch (e) {
-            console.error('[GPT_L1] Error generating sub-summary:', e.message);
-            subSummaries.push(
-                `[ERROR: Sub-summary failed for batch starting at ${new Date(
-                    parseFloat(batch[0].message_ts) * 1000
-                ).toISOString()}]`
-            );
-        }
-    }
-
-    return subSummaries;
-}
-
-async function generateFinalReport(subSummaries, reportType) {
-    const allSummariesText = subSummaries.join('\n---\n');
-
-    const L2_PROMPT = `You are an executive operations manager. You are receiving several daily summaries of Slack activity. Consolidate them into a final structured report. The report MUST be formatted strictly with the following three markdown headings: "Resolved Issues", "Pending / Escalated", and "Notable Events / Trends". Use clear, professional, and concise language. SUMMARIES TO CONSOLIDATE: \n\n${allSummariesText}`;
-
-    try {
-        const completion = await openai.createCompletion({
-            model: 'text-davinci-003',
-            prompt: L2_PROMPT,
-            max_tokens: 1000,
-            temperature: 0.1,
-        });
-
-        const reportContent = completion.data.choices[0].text.trim();
-
-        return reportContent;
-    } catch (e) {
-        console.error('[GPT_L2] Error generating final report:', e.message);
-        return `Report Generation Failed for ${reportType}. Please check logs. Sub-summaries collected: ${subSummaries.length}`;
-    }
-}
-
 async function processReport(reportType) {
     console.log(`\n--- [REPORT START] Executing ${reportType} Report ---`);
 
@@ -197,7 +210,7 @@ async function processReport(reportType) {
         const messages = await fetchUnprocessedMessages(startTime, endTime);
 
         if (messages.length === 0) {
-            const noActivityReport = `*AI Daily Ops Digest – ${reportType} (${new Date().toDateString()})*\n\n_No significant activity recorded between ${startTime.toLocaleTimeString()} and ${endTime.toLocaleTimeString()}._`;
+            const noActivityReport = `_No significant activity recorded between ${startTime.toLocaleTimeString()} and ${endTime.toLocaleTimeString()}._`;
             await publishReport(noActivityReport, reportType);
             console.log(
                 `[Processor:${reportType}] Report finished: No activity.`
@@ -214,11 +227,7 @@ async function processReport(reportType) {
 
         const reportId = `report-${reportType}-${Date.now()}`;
 
-        const finalReportWithTitle = `*AI Daily Ops Digest – ${reportType} (${new Date().toLocaleDateString(
-            'en-US'
-        )})*\n\n${finalReportContent}`;
-
-        await publishReport(finalReportWithTitle, reportType);
+        await publishReport(finalReportContent, reportType);
         await markMessagesAsProcessed(messages, reportId);
 
         console.log(`[Processor:${reportType}] Report finished and published.`);
