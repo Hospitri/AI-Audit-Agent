@@ -38,6 +38,8 @@ cron.schedule(
     }
 );
 
+processReport('ON_HOURS');
+
 app.use('/slack', slackRoutes);
 app.use(bodyParser.json());
 app.use('/api/audit', auditRouter);
