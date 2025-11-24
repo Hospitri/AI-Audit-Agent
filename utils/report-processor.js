@@ -1,4 +1,4 @@
-const { Configuration, OpenAIApi } = require('openai');
+const OpenAI = require('openai');
 const { pool: db } = require('./db.js');
 const { WebClient } = require('@slack/web-api');
 
@@ -10,7 +10,9 @@ const BATCH_DURATION_HOURS = 3;
 const configuration = new Configuration({
     apiKey: process.env.OPENAI_API_KEY,
 });
-const openai = new OpenAIApi(configuration);
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+});
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
 
 async function generateSubSummaries(messages, reportType) {
@@ -25,7 +27,7 @@ async function generateSubSummaries(messages, reportType) {
             .join('\n');
 
         try {
-            const completion = await openai.createChatCompletion({
+            const completion = await openai.chat.completions.create({
                 model: TARGET_MODEL,
                 messages: [
                     { role: 'system', content: L1_SYSTEM_PROMPT },
@@ -37,9 +39,7 @@ async function generateSubSummaries(messages, reportType) {
                 max_tokens: 500,
                 temperature: 0.2,
             });
-            subSummaries.push(
-                completion.data.choices[0].message.content.trim()
-            );
+            subSummaries.push(completion.choices[0].message.content.trim());
         } catch (e) {
             console.error('[GPT_L1] Error generating sub-summary:', e.message);
             subSummaries.push(
@@ -59,7 +59,7 @@ async function generateFinalReport(subSummaries, reportType) {
     const L2_SYSTEM_PROMPT = `You are an executive operations manager. You are receiving several daily summaries of Slack activity. Consolidate them into a final structured report. The report MUST be formatted strictly with the following three markdown headings: "Resolved Issues", "Pending / Escalated", and "Notable Events / Trends". Analyze the input to detect recurrence or critical nature. Output only the structured report text.`;
 
     try {
-        const completion = await openai.createChatCompletion({
+        const completion = await openai.chat.completions.create({
             model: TARGET_MODEL,
             messages: [
                 { role: 'system', content: L2_SYSTEM_PROMPT },
@@ -72,7 +72,7 @@ async function generateFinalReport(subSummaries, reportType) {
             temperature: 0.1,
         });
 
-        return completion.data.choices[0].message.content.trim();
+        return completion.choices[0].message.content.trim();
     } catch (e) {
         console.error('[GPT_L2] Error generating final report:', e.message);
         return `Report Generation Failed for ${reportType}. Sub-summaries collected: ${subSummaries.length}`;
