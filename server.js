@@ -14,7 +14,7 @@ const { processReport } = require('./utils/report-processor');
 
 const app = express();
 
-const TIMEZONE = 'America/Argentina/Buenos_Aires';
+const TIMEZONE = 'America/Puerto_Rico';
 
 cron.schedule(
     '0 18 * * *',

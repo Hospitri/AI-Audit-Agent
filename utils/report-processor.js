@@ -82,24 +82,85 @@ function createBatches(messages, durationHours) {
     return batches;
 }
 
+function formatGptContentToBlocks(reportContent, reportType) {
+    const lines = reportContent
+        .split('\n')
+        .filter(line => line.trim().length > 0);
+    const blocks = [];
+    let currentSection = null;
+    let listItems = [];
+
+    const reportTypeFormatted =
+        reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours';
+    const color = reportType === 'ON_HOURS' ? '#4CAF50' : '#FF9800';
+
+    blocks.push({
+        type: 'header',
+        text: {
+            type: 'plain_text',
+            text: `📊 Daily Ops Digest - ${reportTypeFormatted} (${new Date().toLocaleDateString(
+                'en-US'
+            )})`,
+            emoji: true,
+        },
+    });
+
+    blocks.push({ type: 'divider' });
+
+    lines.forEach(line => {
+        if (
+            line.startsWith('## Resolved Issues') ||
+            line.startsWith('# Resolved Issues')
+        ) {
+            if (currentSection) blocks.push(currentSection);
+            currentSection = {
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*✅ Resolved Issues*` },
+            };
+        } else if (
+            line.startsWith('## Pending / Escalated') ||
+            line.startsWith('# Pending / Escalated')
+        ) {
+            if (currentSection) blocks.push(currentSection);
+            blocks.push({ type: 'divider' });
+            currentSection = {
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*⚠️ Pending / Escalated*` },
+            };
+        } else if (
+            line.startsWith('## Notable Events / Trends') ||
+            line.startsWith('# Notable Events / Trends')
+        ) {
+            if (currentSection) blocks.push(currentSection);
+            blocks.push({ type: 'divider' });
+            currentSection = {
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*✨ Notable Events / Trends*` },
+            };
+        } else if (currentSection && line.trim().startsWith('-')) {
+            if (currentSection.text.text.includes('\n')) {
+                currentSection.text.text += `\n${line}`;
+            } else {
+                currentSection.text.text += `\n${line}`;
+            }
+        } else if (currentSection && line.trim()) {
+            currentSection.text.text += `\n\n${line}`;
+        }
+    });
+
+    if (currentSection) blocks.push(currentSection);
+
+    return blocks;
+}
+
 async function publishReport(finalReportContent, reportType) {
-    const reportTitle = `AI Daily Ops Digest – ${reportType} (${new Date().toLocaleDateString(
-        'en-US'
-    )})`;
+    const blocks = formatGptContentToBlocks(finalReportContent, reportType);
 
     try {
         await slack.chat.postMessage({
             channel: TARGET_CHANNEL_ID,
-            text: reportTitle,
-            mrkdwn: true,
-            attachments: [
-                {
-                    color: reportType === 'ON_HOURS' ? '#4CAF50' : '#FF9800',
-                    title: reportTitle,
-                    text: finalReportContent,
-                    mrkdwn_in: ['text'],
-                },
-            ],
+            blocks: blocks,
+            text: `AI Daily Ops Digest - ${reportType}`,
         });
         console.log(
             `[Processor] Report ${reportType} published successfully to Slack.`
