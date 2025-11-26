@@ -38,7 +38,7 @@ cron.schedule(
     }
 );
 
-// processReport('ON_HOURS');
+processReport('ON_HOURS');
 
 app.use('/slack', slackRoutes);
 app.use(bodyParser.json());
