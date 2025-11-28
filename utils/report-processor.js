@@ -97,18 +97,17 @@ async function generateSubSummaries(messages) {
     const batches = createBatches(messages, BATCH_DURATION_HOURS);
     const subSummaries = [];
 
-    const L1_SYSTEM_PROMPT = `You are a strict data extraction assistant. 
-    Process these Slack messages and summarize distinct operational issues.
+    const L1_SYSTEM_PROMPT = `You are an operational summary assistant. 
+    Task: Read the raw Slack messages and generate concise summaries of the issues discussed.
     
-    CRITICAL REQUIREMENTS:
-    1. Filter noise (greetings, reactions).
-    2. For EVERY issue, you MUST extract:
-       - Property Name (if mentioned/inferred)
-       - Guest Name (if mentioned/inferred)
-       - Author Name (The Slack ID provided in input)
-    3. Status classification: Is this 'Not Attended' (nobody replied/acted), 'Follow Up' (in progress/waiting), or 'Resolved'?
+    CRITICAL INSTRUCTION:
+    Do NOT just list the metadata. You MUST write a sentence describing the issue or action taken.
     
-    Output format: A concise summary paragraph per issue containing the context and the status.`;
+    Format for each item:
+    "[Description of what happened, what is needed, or what was solved] (Property: [Name], Guest: [Name], Author: [Slack ID])"
+    
+    If Property or Guest are unknown, write "N/A".
+    Classify implicitly by content (no need to output headers here, just the items).`;
 
     for (const batch of batches) {
         const batchText = batch
@@ -120,10 +119,13 @@ async function generateSubSummaries(messages) {
                 model: TARGET_MODEL,
                 messages: [
                     { role: 'system', content: L1_SYSTEM_PROMPT },
-                    { role: 'user', content: `Messages:\n\n${batchText}` },
+                    {
+                        role: 'user',
+                        content: `Summarize these messages maintaining context:\n\n${batchText}`,
+                    },
                 ],
                 max_tokens: 600,
-                temperature: 0.1,
+                temperature: 0.2,
             });
             subSummaries.push(completion.choices[0].message.content.trim());
         } catch (e) {
@@ -139,25 +141,36 @@ async function generateFinalReport(subSummaries, reportType) {
 
     const L2_SYSTEM_PROMPT = `You are an executive operations manager. Consolidate the daily summaries into a final report.
     
-    STRICT OUTPUT STRUCTURE (Do not use Markdown Headers like #, just use the exact titles below):
+    You will receive summaries that look like: "Issue description... (Property: X, Guest: Y, Author: Z)".
+    
+    YOUR GOAL: Group these items into the following 3 sections based on their status. Keep the description AND the context details in the same line.
+    
+    STRICT OUTPUT STRUCTURE:
     
     1. Not Attended
-    (List critical issues where no action was taken yet. MUST include Property, Guest, and Author).
+    (List items where NO action/reply was recorded. Format: "- [Issue description] (Prop: [Name], Guest: [Name], By: [ID])")
     
     2. Follow Up
-    (List ongoing issues requiring action/waiting. MUST include Property, Guest, and Author).
+    (List items pending action/waiting. Format: "- [Issue description] (Prop: [Name], Guest: [Name], By: [ID])")
     
     3. Resolved Issues
-    (List completed items. MUST include Property, Guest, and Author).
+    (List completed items. Format: "- [Resolution description] (Prop: [Name], Guest: [Name], By: [ID])")
 
-    Style: Use bullet points. Be professional and concise. Do NOT tag users (e.g. @U123), just display the name/ID as string.`;
+    General Rules:
+    - Use bullet points.
+    - Be concise but descriptive (explain the "what").
+    - Do NOT tag users (use the string ID provided).
+    - Do NOT output "None" if there is data. If a section is empty, write "None".`;
 
     try {
         const completion = await openai.chat.completions.create({
             model: TARGET_MODEL,
             messages: [
                 { role: 'system', content: L2_SYSTEM_PROMPT },
-                { role: 'user', content: `Summaries:\n\n${allSummariesText}` },
+                {
+                    role: 'user',
+                    content: `Summaries to consolidate:\n\n${allSummariesText}`,
+                },
             ],
             max_tokens: 1200,
             temperature: 0.1,
@@ -236,9 +249,8 @@ function createBatches(messages, durationHours) {
 async function publishReport(finalReportContent, reportType) {
     const blocks = formatGptContentToBlocks(finalReportContent, reportType);
 
-    const fallbackText = `Daily Ops Digest - ${
-        reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours'
-    }`;
+    const typeLabel = reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours';
+    const fallbackText = `Daily Ops Digest - ${typeLabel}`;
 
     try {
         await slack.chat.postMessage({
@@ -278,9 +290,32 @@ async function processReport(reportType) {
         if (messages.length === 0) {
             const typeLabel =
                 reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours';
-            const emptyMsg = `_No significant activity recorded between ${startTime.toLocaleTimeString()} and ${endTime.toLocaleTimeString()}._`;
+            const blocks = [
+                {
+                    type: 'header',
+                    text: {
+                        type: 'plain_text',
+                        text: `📊 Daily Ops Digest - ${typeLabel} (${new Date().toLocaleDateString(
+                            'en-US'
+                        )})`,
+                        emoji: true,
+                    },
+                },
+                { type: 'divider' },
+                {
+                    type: 'section',
+                    text: {
+                        type: 'mrkdwn',
+                        text: `_No significant activity recorded between ${startTime.toLocaleTimeString()} and ${endTime.toLocaleTimeString()}._`,
+                    },
+                },
+            ];
 
-            await publishReport(emptyMsg, reportType);
+            await slack.chat.postMessage({
+                channel: TARGET_CHANNEL_ID,
+                blocks: blocks,
+                text: `Daily Ops Digest - ${typeLabel}`,
+            });
 
             console.log(`[Processor:${reportType}] No new messages.`);
             return;
@@ -294,8 +329,10 @@ async function processReport(reportType) {
 
         await publishReport(finalReportContent, reportType);
 
-        const reportId = `report-${reportType}-${Date.now()}`;
-        // await markMessagesAsProcessed(messages, reportId);
+        // await markMessagesAsProcessed(
+        //     messages,
+        //     `report-${reportType}-${Date.now()}`
+        // );
 
         console.log(`[Processor:${reportType}] Finished.`);
     } catch (error) {
