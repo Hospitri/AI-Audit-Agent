@@ -11,6 +11,164 @@ const openai = new OpenAI({
 });
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
 
+function formatGptContentToBlocks(reportContent, reportType) {
+    const typeLabel = reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours';
+    const dateStr = new Date().toLocaleDateString('en-US');
+
+    const blocks = [
+        {
+            type: 'header',
+            text: {
+                type: 'plain_text',
+                text: `📊 Daily Ops Digest - ${typeLabel} (${dateStr})`,
+                emoji: true,
+            },
+        },
+        { type: 'divider' },
+    ];
+
+    const lines = reportContent
+        .split('\n')
+        .filter(line => line.trim().length > 0);
+
+    let currentSectionText = '';
+
+    const pushSection = text => {
+        if (text.trim()) {
+            blocks.push({
+                type: 'section',
+                text: { type: 'mrkdwn', text: text.trim() },
+            });
+        }
+    };
+
+    lines.forEach(line => {
+        const lowerLine = line.toLowerCase();
+
+        if (lowerLine.includes('not attended')) {
+            pushSection(currentSectionText);
+            currentSectionText = '';
+            blocks.push({
+                type: 'section',
+                text: { type: 'mrkdwn', text: '*🚨 Not Attended*' },
+            });
+        } else if (lowerLine.includes('follow up')) {
+            pushSection(currentSectionText);
+            currentSectionText = '';
+            blocks.push({ type: 'divider' });
+            blocks.push({
+                type: 'section',
+                text: { type: 'mrkdwn', text: '*⚠️ Follow Up*' },
+            });
+        } else if (lowerLine.includes('resolved issues')) {
+            pushSection(currentSectionText);
+            currentSectionText = '';
+            blocks.push({ type: 'divider' });
+            blocks.push({
+                type: 'section',
+                text: { type: 'mrkdwn', text: '*✅ Resolved Issues*' },
+            });
+        } else {
+            if (line.trim().match(/^[-*]/)) {
+                currentSectionText += `${line.trim()}\n`;
+            } else {
+                currentSectionText += `${line.trim()}\n`;
+            }
+        }
+    });
+
+    pushSection(currentSectionText);
+
+    if (blocks.length <= 2) {
+        blocks.push({
+            type: 'section',
+            text: { type: 'mrkdwn', text: reportContent },
+        });
+    }
+
+    return blocks;
+}
+
+function getUsernameFromId(userId) {
+    return userId;
+}
+
+async function generateSubSummaries(messages) {
+    const batches = createBatches(messages, BATCH_DURATION_HOURS);
+    const subSummaries = [];
+
+    const L1_SYSTEM_PROMPT = `You are a strict data extraction assistant. 
+    Process these Slack messages and summarize distinct operational issues.
+    
+    CRITICAL REQUIREMENTS:
+    1. Filter noise (greetings, reactions).
+    2. For EVERY issue, you MUST extract:
+       - Property Name (if mentioned/inferred)
+       - Guest Name (if mentioned/inferred)
+       - Author Name (The Slack ID provided in input)
+    3. Status classification: Is this 'Not Attended' (nobody replied/acted), 'Follow Up' (in progress/waiting), or 'Resolved'?
+    
+    Output format: A concise summary paragraph per issue containing the context and the status.`;
+
+    for (const batch of batches) {
+        const batchText = batch
+            .map(msg => `Author ${msg.user_id}: ${msg.message_text}`)
+            .join('\n');
+
+        try {
+            const completion = await openai.chat.completions.create({
+                model: TARGET_MODEL,
+                messages: [
+                    { role: 'system', content: L1_SYSTEM_PROMPT },
+                    { role: 'user', content: `Messages:\n\n${batchText}` },
+                ],
+                max_tokens: 600,
+                temperature: 0.1,
+            });
+            subSummaries.push(completion.choices[0].message.content.trim());
+        } catch (e) {
+            console.error('[GPT_L1] Error:', e.message);
+            subSummaries.push(`[ERROR processing batch]`);
+        }
+    }
+    return subSummaries;
+}
+
+async function generateFinalReport(subSummaries, reportType) {
+    const allSummariesText = subSummaries.join('\n---\n');
+
+    const L2_SYSTEM_PROMPT = `You are an executive operations manager. Consolidate the daily summaries into a final report.
+    
+    STRICT OUTPUT STRUCTURE (Do not use Markdown Headers like #, just use the exact titles below):
+    
+    1. Not Attended
+    (List critical issues where no action was taken yet. MUST include Property, Guest, and Author).
+    
+    2. Follow Up
+    (List ongoing issues requiring action/waiting. MUST include Property, Guest, and Author).
+    
+    3. Resolved Issues
+    (List completed items. MUST include Property, Guest, and Author).
+
+    Style: Use bullet points. Be professional and concise. Do NOT tag users (e.g. @U123), just display the name/ID as string.`;
+
+    try {
+        const completion = await openai.chat.completions.create({
+            model: TARGET_MODEL,
+            messages: [
+                { role: 'system', content: L2_SYSTEM_PROMPT },
+                { role: 'user', content: `Summaries:\n\n${allSummariesText}` },
+            ],
+            max_tokens: 1200,
+            temperature: 0.1,
+        });
+        return completion.choices[0].message.content.trim();
+    } catch (e) {
+        console.error('[GPT_L2] Error:', e.message);
+        return `Report Generation Failed.`;
+    }
+}
+
 function getReportTimeRange(reportType) {
     const now = new Date();
     let startTime, endTime;
@@ -43,10 +201,7 @@ async function fetchUnprocessedMessages(startTime, endTime) {
 
         return result.rows;
     } catch (dbError) {
-        console.error(
-            '[Processor] DB Error fetching messages:',
-            dbError.message
-        );
+        console.error('[Processor] DB Error:', dbError.message);
         return [];
     }
 }
@@ -74,230 +229,82 @@ function createBatches(messages, durationHours) {
             currentBatchTime = msgTime;
         }
     });
-
-    if (currentBatch.length > 0) {
-        batches.push(currentBatch);
-    }
-
+    if (currentBatch.length > 0) batches.push(currentBatch);
     return batches;
-}
-
-function formatGptContentToBlocks(reportContent, reportType) {
-    const lines = reportContent
-        .split('\n')
-        .filter(line => line.trim().length > 0);
-    const blocks = [];
-    let currentSection = null;
-    let listItems = [];
-
-    const reportTypeFormatted =
-        reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours';
-    const color = reportType === 'ON_HOURS' ? '#4CAF50' : '#FF9800';
-
-    blocks.push({
-        type: 'header',
-        text: {
-            type: 'plain_text',
-            text: `📊 Daily Ops Digest - ${reportTypeFormatted} (${new Date().toLocaleDateString(
-                'en-US'
-            )})`,
-            emoji: true,
-        },
-    });
-
-    blocks.push({ type: 'divider' });
-
-    lines.forEach(line => {
-        if (
-            line.startsWith('## Resolved Issues') ||
-            line.startsWith('# Resolved Issues')
-        ) {
-            if (currentSection) blocks.push(currentSection);
-            currentSection = {
-                type: 'section',
-                text: { type: 'mrkdwn', text: `*✅ Resolved Issues*` },
-            };
-        } else if (
-            line.startsWith('## Pending / Escalated') ||
-            line.startsWith('# Pending / Escalated')
-        ) {
-            if (currentSection) blocks.push(currentSection);
-            blocks.push({ type: 'divider' });
-            currentSection = {
-                type: 'section',
-                text: { type: 'mrkdwn', text: `*⚠️ Pending / Escalated*` },
-            };
-        } else if (
-            line.startsWith('## Notable Events / Trends') ||
-            line.startsWith('# Notable Events / Trends')
-        ) {
-            if (currentSection) blocks.push(currentSection);
-            blocks.push({ type: 'divider' });
-            currentSection = {
-                type: 'section',
-                text: { type: 'mrkdwn', text: `*✨ Notable Events / Trends*` },
-            };
-        } else if (currentSection && line.trim().startsWith('-')) {
-            if (currentSection.text.text.includes('\n')) {
-                currentSection.text.text += `\n${line}`;
-            } else {
-                currentSection.text.text += `\n${line}`;
-            }
-        } else if (currentSection && line.trim()) {
-            currentSection.text.text += `\n\n${line}`;
-        }
-    });
-
-    if (currentSection) blocks.push(currentSection);
-
-    return blocks;
 }
 
 async function publishReport(finalReportContent, reportType) {
     const blocks = formatGptContentToBlocks(finalReportContent, reportType);
 
+    const fallbackText = `Daily Ops Digest - ${
+        reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours'
+    }`;
+
     try {
         await slack.chat.postMessage({
             channel: TARGET_CHANNEL_ID,
             blocks: blocks,
-            text: `AI Daily Ops Digest - ${reportType}`,
+            text: fallbackText,
+            mrkdwn: true,
         });
-        console.log(
-            `[Processor] Report ${reportType} published successfully to Slack.`
-        );
+        console.log(`[Processor] Report ${reportType} published to Slack.`);
     } catch (e) {
-        console.error(
-            '[Processor] Failed to publish report to Slack:',
-            e.message
-        );
+        console.error('[Processor] Failed to publish:', e.message);
     }
 }
 
 async function markMessagesAsProcessed(messages, reportId) {
     if (messages.length === 0) return;
-
     const messageTSs = messages.map(msg => msg.message_ts);
-
     try {
         await db.query(
-            `UPDATE slack_messages 
-             SET processed_report_id = $1 
-             WHERE message_ts = ANY($2::text[])`,
+            `UPDATE slack_messages SET processed_report_id = $1 WHERE message_ts = ANY($2::text[])`,
             [reportId, messageTSs]
         );
         console.log(
-            `[Processor] ${messages.length} messages marked as processed.`
+            `[Processor] ${messages.length} messages marked processed.`
         );
     } catch (dbError) {
-        console.error(
-            '[Processor] Failed to mark messages as processed:',
-            dbError.message
-        );
-    }
-}
-
-async function generateSubSummaries(messages, reportType) {
-    const batches = createBatches(messages, BATCH_DURATION_HOURS);
-    const subSummaries = [];
-
-    const L1_SYSTEM_PROMPT = `You are a summary assistant. Your task is to process a batch of raw Slack communications. Filter out noise (repeated questions, greetings, reactions). Focus strictly on identifying: 1. Problems reported (with owner/property if mentioned). 2. Actions taken. 3. Pending items and next steps. Output only a concise summary of these points.`;
-
-    for (const batch of batches) {
-        const batchText = batch
-            .map(msg => `${msg.user_id}: ${msg.message_text}`)
-            .join('\n');
-
-        try {
-            const completion = await openai.chat.completions.create({
-                model: TARGET_MODEL,
-                messages: [
-                    { role: 'system', content: L1_SYSTEM_PROMPT },
-                    {
-                        role: 'user',
-                        content: `Process the following messages:\n\n${batchText}`,
-                    },
-                ],
-                max_tokens: 500,
-                temperature: 0.2,
-            });
-            subSummaries.push(completion.choices[0].message.content.trim());
-        } catch (e) {
-            console.error('[GPT_L1] Error generating sub-summary:', e.message);
-            subSummaries.push(
-                `[ERROR: Sub-summary failed for batch starting at ${new Date(
-                    parseFloat(batch[0].message_ts) * 1000
-                ).toISOString()}. Please check logs.]`
-            );
-        }
-    }
-
-    return subSummaries;
-}
-
-async function generateFinalReport(subSummaries, reportType) {
-    const allSummariesText = subSummaries.join('\n---\n');
-
-    const L2_SYSTEM_PROMPT = `You are an executive operations manager. You are receiving several daily summaries of Slack activity. Consolidate them into a final structured report. The report MUST be formatted strictly with the following three markdown headings: "Resolved Issues", "Pending / Escalated", and "Notable Events / Trends". Analyze the input to detect recurrence or critical nature. Output only the structured report text.`;
-
-    try {
-        const completion = await openai.chat.completions.create({
-            model: TARGET_MODEL,
-            messages: [
-                { role: 'system', content: L2_SYSTEM_PROMPT },
-                {
-                    role: 'user',
-                    content: `Summaries to consolidate: \n\n${allSummariesText}`,
-                },
-            ],
-            max_tokens: 1000,
-            temperature: 0.1,
-        });
-
-        return completion.choices[0].message.content.trim();
-    } catch (e) {
-        console.error('[GPT_L2] Error generating final report:', e.message);
-        return `Report Generation Failed for ${reportType}. Sub-summaries collected: ${subSummaries.length}`;
+        console.error('[Processor] Failed to mark processed:', dbError.message);
     }
 }
 
 async function processReport(reportType) {
     console.log(`\n--- [REPORT START] Executing ${reportType} Report ---`);
-
     try {
         const { startTime, endTime } = getReportTimeRange(reportType);
-
         const messages = await fetchUnprocessedMessages(startTime, endTime);
 
         if (messages.length === 0) {
-            const noActivityReport = `_No significant activity recorded between ${startTime.toLocaleTimeString()} and ${endTime.toLocaleTimeString()}._`;
-            await publishReport(noActivityReport, reportType);
-            console.log(
-                `[Processor:${reportType}] Report finished: No activity.`
-            );
+            const typeLabel =
+                reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours';
+            const emptyMsg = `_No significant activity recorded between ${startTime.toLocaleTimeString()} and ${endTime.toLocaleTimeString()}._`;
+
+            await publishReport(emptyMsg, reportType);
+
+            console.log(`[Processor:${reportType}] No new messages.`);
             return;
         }
 
-        const subSummaries = await generateSubSummaries(messages, reportType);
-
+        const subSummaries = await generateSubSummaries(messages);
         const finalReportContent = await generateFinalReport(
             subSummaries,
             reportType
         );
 
-        const reportId = `report-${reportType}-${Date.now()}`;
-
         await publishReport(finalReportContent, reportType);
+
+        const reportId = `report-${reportType}-${Date.now()}`;
         await markMessagesAsProcessed(messages, reportId);
 
-        console.log(`[Processor:${reportType}] Report finished and published.`);
+        console.log(`[Processor:${reportType}] Finished.`);
     } catch (error) {
         console.error(
-            `[Processor:${reportType}] CRITICAL FAILURE during report generation:`,
+            `[Processor:${reportType}] CRITICAL FAILURE:`,
             error.message
         );
     }
-
-    console.log(`--- [REPORT END] ${reportType} Report Complete ---\n`);
+    console.log(`--- [REPORT END] ---\n`);
 }
 
 module.exports = {
