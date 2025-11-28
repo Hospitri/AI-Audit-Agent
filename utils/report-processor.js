@@ -11,89 +11,6 @@ const openai = new OpenAI({
 });
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
 
-function getUsernameFromId(userId) {
-    return userId;
-}
-
-async function generateSubSummaries(messages, reportType) {
-    const batches = createBatches(messages, BATCH_DURATION_HOURS);
-    const subSummaries = [];
-
-    const L1_SYSTEM_PROMPT = `You are a data extraction and summary assistant for operational reports. Your task is to process raw Slack communications. 
-    1. Filter all noise (greetings, repetitive reactions, non-issues).
-    2. For every issue/update, strictly extract and present the following metadata: Property Name, Guest Name, and Author (Slack ID).
-    3. Classify each message as either 'Resolved', 'Pending', or 'General Update'.
-    4. Output only a concise, bullet-pointed summary, retaining all key metadata.`;
-
-    for (const batch of batches) {
-        const batchText = batch
-            .map(
-                msg =>
-                    `${getUsernameFromId(msg.user_id)} (${msg.user_id}): ${
-                        msg.message_text
-                    }`
-            )
-            .join('\n');
-
-        try {
-            const completion = await openai.chat.completions.create({
-                model: TARGET_MODEL,
-                messages: [
-                    { role: 'system', content: L1_SYSTEM_PROMPT },
-                    {
-                        role: 'user',
-                        content: `Process the following messages and extract metadata (Property, Guest, Author) even if it's based on strong inference or context:\n\n${batchText}`,
-                    },
-                ],
-                max_tokens: 500,
-                temperature: 0.2,
-            });
-            subSummaries.push(completion.choices[0].message.content.trim());
-        } catch (e) {
-            console.error('[GPT_L1] Error generating sub-summary:', e.message);
-            subSummaries.push(
-                `[ERROR: Sub-summary failed for batch starting at ${new Date(
-                    parseFloat(batch[0].message_ts) * 1000
-                ).toISOString()}. Check logs.]`
-            );
-        }
-    }
-
-    return subSummaries;
-}
-
-async function generateFinalReport(subSummaries, reportType) {
-    const allSummariesText = subSummaries.join('\n---\n');
-
-    const L2_SYSTEM_PROMPT = `You are an executive operations manager. Consolidate the provided daily summaries into a final structured report. 
-    The report MUST contain three sections in this exact order: 
-    1. '🚨 Not Attended' (Issues requiring immediate attention, no action recorded).
-    2. '⚠️ Follow Up' (Issues that are pending or require additional steps/waiting).
-    3. '✅ Resolved Issues' (Problems that were closed or successfully mitigated).
-    
-    Maintain high quality presentation: Use markdown lists (* or -) for items. Use professional, concise language. Include the specific Property and Guest names for context, and name the message Author as a simple string (do NOT use @mentions or Slack user IDs). Output ONLY the structured report text.`;
-
-    try {
-        const completion = await openai.chat.completions.create({
-            model: TARGET_MODEL,
-            messages: [
-                { role: 'system', content: L2_SYSTEM_PROMPT },
-                {
-                    role: 'user',
-                    content: `Consolidate the following summaries into the required report format. The final report should ONLY contain the content under the three headings, in order:\n\n${allSummariesText}`,
-                },
-            ],
-            max_tokens: 1000,
-            temperature: 0.1,
-        });
-
-        return completion.choices[0].message.content.trim();
-    } catch (e) {
-        console.error('[GPT_L2] Error generating final report:', e.message);
-        return `Report Generation Failed for ${reportType}. Sub-summaries collected: ${subSummaries.length}`;
-    }
-}
-
 function getReportTimeRange(reportType) {
     const now = new Date();
     let startTime, endTime;
@@ -165,40 +82,85 @@ function createBatches(messages, durationHours) {
     return batches;
 }
 
+function formatGptContentToBlocks(reportContent, reportType) {
+    const lines = reportContent
+        .split('\n')
+        .filter(line => line.trim().length > 0);
+    const blocks = [];
+    let currentSection = null;
+    let listItems = [];
+
+    const reportTypeFormatted =
+        reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours';
+    const color = reportType === 'ON_HOURS' ? '#4CAF50' : '#FF9800';
+
+    blocks.push({
+        type: 'header',
+        text: {
+            type: 'plain_text',
+            text: `📊 Daily Ops Digest - ${reportTypeFormatted} (${new Date().toLocaleDateString(
+                'en-US'
+            )})`,
+            emoji: true,
+        },
+    });
+
+    blocks.push({ type: 'divider' });
+
+    lines.forEach(line => {
+        if (
+            line.startsWith('## Resolved Issues') ||
+            line.startsWith('# Resolved Issues')
+        ) {
+            if (currentSection) blocks.push(currentSection);
+            currentSection = {
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*✅ Resolved Issues*` },
+            };
+        } else if (
+            line.startsWith('## Pending / Escalated') ||
+            line.startsWith('# Pending / Escalated')
+        ) {
+            if (currentSection) blocks.push(currentSection);
+            blocks.push({ type: 'divider' });
+            currentSection = {
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*⚠️ Pending / Escalated*` },
+            };
+        } else if (
+            line.startsWith('## Notable Events / Trends') ||
+            line.startsWith('# Notable Events / Trends')
+        ) {
+            if (currentSection) blocks.push(currentSection);
+            blocks.push({ type: 'divider' });
+            currentSection = {
+                type: 'section',
+                text: { type: 'mrkdwn', text: `*✨ Notable Events / Trends*` },
+            };
+        } else if (currentSection && line.trim().startsWith('-')) {
+            if (currentSection.text.text.includes('\n')) {
+                currentSection.text.text += `\n${line}`;
+            } else {
+                currentSection.text.text += `\n${line}`;
+            }
+        } else if (currentSection && line.trim()) {
+            currentSection.text.text += `\n\n${line}`;
+        }
+    });
+
+    if (currentSection) blocks.push(currentSection);
+
+    return blocks;
+}
+
 async function publishReport(finalReportContent, reportType) {
-    const reportTitle = `AI Daily Ops Digest – ${reportType} (${new Date().toLocaleDateString(
-        'en-US'
-    )})`;
+    const blocks = formatGptContentToBlocks(finalReportContent, reportType);
 
     try {
-        const blocks = [
-            {
-                type: 'header',
-                text: {
-                    type: 'plain_text',
-                    text: `📊 Daily Ops Digest - ${reportType} (${new Date().toLocaleDateString(
-                        'en-US'
-                    )})`,
-                    emoji: true,
-                },
-            },
-            {
-                type: 'divider',
-            },
-            {
-                type: 'section',
-                text: {
-                    type: 'mrkdwn',
-                    text: finalReportContent,
-                },
-            },
-        ];
-
         await slack.chat.postMessage({
             channel: TARGET_CHANNEL_ID,
             blocks: blocks,
-            text: reportTitle,
-            mrkdwn: true,
+            text: `AI Daily Ops Digest - ${reportType}`,
         });
         console.log(
             `[Processor] Report ${reportType} published successfully to Slack.`
@@ -231,6 +193,70 @@ async function markMessagesAsProcessed(messages, reportId) {
             '[Processor] Failed to mark messages as processed:',
             dbError.message
         );
+    }
+}
+
+async function generateSubSummaries(messages, reportType) {
+    const batches = createBatches(messages, BATCH_DURATION_HOURS);
+    const subSummaries = [];
+
+    const L1_SYSTEM_PROMPT = `You are a summary assistant. Your task is to process a batch of raw Slack communications. Filter out noise (repeated questions, greetings, reactions). Focus strictly on identifying: 1. Problems reported (with owner/property if mentioned). 2. Actions taken. 3. Pending items and next steps. Output only a concise summary of these points.`;
+
+    for (const batch of batches) {
+        const batchText = batch
+            .map(msg => `${msg.user_id}: ${msg.message_text}`)
+            .join('\n');
+
+        try {
+            const completion = await openai.chat.completions.create({
+                model: TARGET_MODEL,
+                messages: [
+                    { role: 'system', content: L1_SYSTEM_PROMPT },
+                    {
+                        role: 'user',
+                        content: `Process the following messages:\n\n${batchText}`,
+                    },
+                ],
+                max_tokens: 500,
+                temperature: 0.2,
+            });
+            subSummaries.push(completion.choices[0].message.content.trim());
+        } catch (e) {
+            console.error('[GPT_L1] Error generating sub-summary:', e.message);
+            subSummaries.push(
+                `[ERROR: Sub-summary failed for batch starting at ${new Date(
+                    parseFloat(batch[0].message_ts) * 1000
+                ).toISOString()}. Please check logs.]`
+            );
+        }
+    }
+
+    return subSummaries;
+}
+
+async function generateFinalReport(subSummaries, reportType) {
+    const allSummariesText = subSummaries.join('\n---\n');
+
+    const L2_SYSTEM_PROMPT = `You are an executive operations manager. You are receiving several daily summaries of Slack activity. Consolidate them into a final structured report. The report MUST be formatted strictly with the following three markdown headings: "Resolved Issues", "Pending / Escalated", and "Notable Events / Trends". Analyze the input to detect recurrence or critical nature. Output only the structured report text.`;
+
+    try {
+        const completion = await openai.chat.completions.create({
+            model: TARGET_MODEL,
+            messages: [
+                { role: 'system', content: L2_SYSTEM_PROMPT },
+                {
+                    role: 'user',
+                    content: `Summaries to consolidate: \n\n${allSummariesText}`,
+                },
+            ],
+            max_tokens: 1000,
+            temperature: 0.1,
+        });
+
+        return completion.choices[0].message.content.trim();
+    } catch (e) {
+        console.error('[GPT_L2] Error generating final report:', e.message);
+        return `Report Generation Failed for ${reportType}. Sub-summaries collected: ${subSummaries.length}`;
     }
 }
 
