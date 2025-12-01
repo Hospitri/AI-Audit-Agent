@@ -11,6 +11,31 @@ const openai = new OpenAI({
 });
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
 
+const userCache = new Map();
+
+async function resolveUserName(userId) {
+    if (userCache.has(userId)) {
+        return userCache.get(userId);
+    }
+    try {
+        const response = await slack.users.info({ user: userId });
+        if (response.ok && response.user) {
+            const realName =
+                response.user.profile.display_name ||
+                response.user.profile.real_name ||
+                response.user.name;
+            userCache.set(userId, realName);
+            return realName;
+        }
+    } catch (error) {
+        console.warn(
+            `[Processor] Could not resolve user ${userId}:`,
+            error.message
+        );
+    }
+    return userId;
+}
+
 function formatGptContentToBlocks(reportContent, reportType) {
     const typeLabel = reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours';
     const dateStr = new Date().toLocaleDateString('en-US');
@@ -89,30 +114,30 @@ function formatGptContentToBlocks(reportContent, reportType) {
     return blocks;
 }
 
-function getUsernameFromId(userId) {
-    return userId;
-}
-
 async function generateSubSummaries(messages) {
     const batches = createBatches(messages, BATCH_DURATION_HOURS);
     const subSummaries = [];
 
     const L1_SYSTEM_PROMPT = `You are an operational summary assistant. 
-    Task: Read the raw Slack messages and generate concise summaries of the issues discussed.
+    Task: Read the raw Slack messages and generate concise summaries.
     
     CRITICAL INSTRUCTION:
     Do NOT just list the metadata. You MUST write a sentence describing the issue or action taken.
     
     Format for each item:
-    "[Description of what happened, what is needed, or what was solved] (Property: [Name], Guest: [Name], Author: [Slack ID])"
+    "[Description of what happened] (Prop: [Name], Guest: [Name], By: [Author Name])"
     
-    If Property or Guest are unknown, write "N/A".
-    Classify implicitly by content (no need to output headers here, just the items).`;
+    If Property or Guest are unknown, write "N/A".`;
 
     for (const batch of batches) {
-        const batchText = batch
-            .map(msg => `Author ${msg.user_id}: ${msg.message_text}`)
-            .join('\n');
+        const batchLines = await Promise.all(
+            batch.map(async msg => {
+                const authorName = await resolveUserName(msg.user_id);
+                return `Author ${authorName}: ${msg.message_text}`;
+            })
+        );
+
+        const batchText = batchLines.join('\n');
 
         try {
             const completion = await openai.chat.completions.create({
@@ -141,25 +166,24 @@ async function generateFinalReport(subSummaries, reportType) {
 
     const L2_SYSTEM_PROMPT = `You are an executive operations manager. Consolidate the daily summaries into a final report.
     
-    You will receive summaries that look like: "Issue description... (Property: X, Guest: Y, Author: Z)".
+    You will receive summaries that look like: "Issue description... (Prop: X, Guest: Y, By: Name)".
     
     YOUR GOAL: Group these items into the following 3 sections based on their status. Keep the description AND the context details in the same line.
     
     STRICT OUTPUT STRUCTURE:
     
     1. Not Attended
-    (List items where NO action/reply was recorded. Format: "- [Issue description] (Prop: [Name], Guest: [Name], By: [ID])")
+    (List items where NO action/reply was recorded. Format: "- [Issue description] (Prop: [Name], Guest: [Name], By: [Name])")
     
     2. Follow Up
-    (List items pending action/waiting. Format: "- [Issue description] (Prop: [Name], Guest: [Name], By: [ID])")
+    (List items pending action/waiting. Format: "- [Issue description] (Prop: [Name], Guest: [Name], By: [Name])")
     
     3. Resolved Issues
-    (List completed items. Format: "- [Resolution description] (Prop: [Name], Guest: [Name], By: [ID])")
+    (List completed items. Format: "- [Resolution description] (Prop: [Name], Guest: [Name], By: [Name])")
 
     General Rules:
     - Use bullet points.
-    - Be concise but descriptive (explain the "what").
-    - Do NOT tag users (use the string ID provided).
+    - Be concise but descriptive.
     - Do NOT output "None" if there is data. If a section is empty, write "None".`;
 
     try {
