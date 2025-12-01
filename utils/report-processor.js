@@ -36,6 +36,12 @@ async function resolveUserName(userId) {
     return userId;
 }
 
+function constructSlackUrl(channelId, ts) {
+    if (!channelId || !ts) return '';
+    const cleanTs = ts.replace('.', '');
+    return `https://slack.com/archives/${channelId}/p${cleanTs}`;
+}
+
 function formatGptContentToBlocks(reportContent, reportType) {
     const typeLabel = reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours';
     const dateStr = new Date().toLocaleDateString('en-US');
@@ -122,18 +128,22 @@ async function generateSubSummaries(messages) {
     Task: Read the raw Slack messages and generate concise summaries.
     
     CRITICAL INSTRUCTION:
-    Do NOT just list the metadata. You MUST write a sentence describing the issue or action taken.
+    1. Filter noise.
+    2. Write a descriptive sentence of the issue/action.
+    3. Extract Metadata: Property, Guest, Author.
+    4. APPEND THE CONTEXT LINK: The input includes a "[Link: URL]" for messages. You MUST include this link at the end of the item using Slack syntax: <URL|View Context>.
     
     Format for each item:
-    "[Description of what happened] (Prop: [Name], Guest: [Name], By: [Author Name])"
+    "[Description] (Prop: [Name], Guest: [Name], By: [Author Name]) <[URL]|View Context>"
     
-    If Property or Guest are unknown, write "N/A".`;
+    If multiple messages discuss the same issue, use the link from the first message.`;
 
     for (const batch of batches) {
         const batchLines = await Promise.all(
             batch.map(async msg => {
                 const authorName = await resolveUserName(msg.user_id);
-                return `Author ${authorName}: ${msg.message_text}`;
+                const url = constructSlackUrl(msg.channel_id, msg.message_ts);
+                return `Author ${authorName}: ${msg.message_text} [Link: ${url}]`;
             })
         );
 
@@ -144,12 +154,9 @@ async function generateSubSummaries(messages) {
                 model: TARGET_MODEL,
                 messages: [
                     { role: 'system', content: L1_SYSTEM_PROMPT },
-                    {
-                        role: 'user',
-                        content: `Summarize these messages maintaining context:\n\n${batchText}`,
-                    },
+                    { role: 'user', content: `Summarize:\n\n${batchText}` },
                 ],
-                max_tokens: 600,
+                max_tokens: 800,
                 temperature: 0.2,
             });
             subSummaries.push(completion.choices[0].message.content.trim());
@@ -164,39 +171,28 @@ async function generateSubSummaries(messages) {
 async function generateFinalReport(subSummaries, reportType) {
     const allSummariesText = subSummaries.join('\n---\n');
 
-    const L2_SYSTEM_PROMPT = `You are an executive operations manager. Consolidate the daily summaries into a final report.
+    const L2_SYSTEM_PROMPT = `You are an executive operations manager. Consolidate daily summaries.
     
-    You will receive summaries that look like: "Issue description... (Prop: X, Guest: Y, By: Name)".
+    You will receive items like: "...description... (Context) <URL|View Context>".
     
-    YOUR GOAL: Group these items into the following 3 sections based on their status. Keep the description AND the context details in the same line.
+    GOAL: Group items into the 3 sections below.
+    CRITICAL: You MUST preserve the "<URL|View Context>" link at the end of every item.
     
-    STRICT OUTPUT STRUCTURE:
-    
+    STRICT STRUCTURE:
     1. Not Attended
-    (List items where NO action/reply was recorded. Format: "- [Issue description] (Prop: [Name], Guest: [Name], By: [Name])")
-    
     2. Follow Up
-    (List items pending action/waiting. Format: "- [Issue description] (Prop: [Name], Guest: [Name], By: [Name])")
-    
     3. Resolved Issues
-    (List completed items. Format: "- [Resolution description] (Prop: [Name], Guest: [Name], By: [Name])")
 
-    General Rules:
-    - Use bullet points.
-    - Be concise but descriptive.
-    - Do NOT output "None" if there is data. If a section is empty, write "None".`;
+    Format: "- [Description] (Prop: X, Guest: Y, By: Z) <URL|View Context>"`;
 
     try {
         const completion = await openai.chat.completions.create({
             model: TARGET_MODEL,
             messages: [
                 { role: 'system', content: L2_SYSTEM_PROMPT },
-                {
-                    role: 'user',
-                    content: `Summaries to consolidate:\n\n${allSummariesText}`,
-                },
+                { role: 'user', content: `Summaries:\n\n${allSummariesText}` },
             ],
-            max_tokens: 1200,
+            max_tokens: 1500,
             temperature: 0.1,
         });
         return completion.choices[0].message.content.trim();
@@ -227,7 +223,7 @@ function getReportTimeRange(reportType) {
 async function fetchUnprocessedMessages(startTime, endTime) {
     try {
         const result = await db.query(
-            `SELECT message_text, user_id, message_ts, thread_ts, id
+            `SELECT message_text, user_id, message_ts, thread_ts, id, channel_id
              FROM slack_messages 
              WHERE created_at >= $1 
                AND created_at < $2 
