@@ -16,6 +16,131 @@ const SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET;
 
 let BOT_USER_ID = null;
 
+const getEscalationModalView = () => ({
+    type: 'modal',
+    callback_id: 'escalation_modal',
+    title: { type: 'plain_text', text: 'Create Escalation' },
+    submit: { type: 'plain_text', text: 'Submit' },
+    close: { type: 'plain_text', text: 'Cancel' },
+    blocks: [
+        {
+            type: 'input',
+            block_id: 'booking',
+            element: {
+                type: 'plain_text_input',
+                action_id: 'booking_ref',
+                placeholder: { type: 'plain_text', text: 'Reference number' },
+            },
+            label: { type: 'plain_text', text: 'Booking reference' },
+        },
+        {
+            type: 'input',
+            block_id: 'listing',
+            element: {
+                type: 'plain_text_input',
+                action_id: 'listing_name',
+                placeholder: { type: 'plain_text', text: 'Listing name' },
+            },
+            label: { type: 'plain_text', text: 'Listing name' },
+        },
+        {
+            type: 'input',
+            block_id: 'guest',
+            element: {
+                type: 'plain_text_input',
+                action_id: 'guest_name',
+                placeholder: { type: 'plain_text', text: 'Guest full name' },
+            },
+            label: { type: 'plain_text', text: 'Guest name' },
+        },
+        {
+            type: 'input',
+            block_id: 'issue',
+            element: {
+                type: 'checkboxes',
+                action_id: 'issue_type',
+                options: [
+                    {
+                        text: { type: 'plain_text', text: 'Access/Check-in' },
+                        value: 'Access/Check-in',
+                    },
+                    {
+                        text: {
+                            type: 'plain_text',
+                            text: 'Cleanliness/Supplies',
+                        },
+                        value: 'Cleanliness/Supplies',
+                    },
+                    {
+                        text: {
+                            type: 'plain_text',
+                            text: 'Property condition',
+                        },
+                        value: 'Property condition',
+                    },
+                    {
+                        text: {
+                            type: 'plain_text',
+                            text: 'Noise/Disturbances',
+                        },
+                        value: 'Noise/Disturbances',
+                    },
+                    {
+                        text: {
+                            type: 'plain_text',
+                            text: 'Reservation/OTA Issues',
+                        },
+                        value: 'Reservation/OTA Issues',
+                    },
+                    {
+                        text: { type: 'plain_text', text: 'Other' },
+                        value: 'Other',
+                    },
+                ],
+            },
+            label: { type: 'plain_text', text: 'Issue type' },
+        },
+        {
+            type: 'input',
+            block_id: 'summary',
+            element: {
+                type: 'plain_text_input',
+                action_id: 'summary',
+                multiline: true,
+                placeholder: {
+                    type: 'plain_text',
+                    text: 'Describe the issue and any immediate impact',
+                },
+            },
+            label: { type: 'plain_text', text: 'Summary' },
+        },
+        {
+            type: 'input',
+            block_id: 'assign',
+            element: {
+                type: 'multi_users_select',
+                action_id: 'assignees',
+                placeholder: {
+                    type: 'plain_text',
+                    text: 'Select one or more users',
+                },
+            },
+            label: { type: 'plain_text', text: 'Assign to' },
+        },
+        {
+            type: 'input',
+            optional: true,
+            block_id: 'input_block_id',
+            label: { type: 'plain_text', text: 'Attachments' },
+            element: {
+                type: 'file_input',
+                action_id: 'file_input_action_id_1',
+                max_files: 5,
+            },
+        },
+    ],
+});
+
 async function getBotUserId() {
     if (BOT_USER_ID) return BOT_USER_ID;
     try {
@@ -142,6 +267,26 @@ router.post(
                 payload = JSON.parse(payloadStr);
             } catch (err) {
                 return res.status(400).send('bad payload');
+            }
+
+            if (
+                payload.type === 'shortcut' &&
+                payload.callback_id === 'escalation_shortcut'
+            ) {
+                res.status(200).send();
+
+                try {
+                    await slack.views.open({
+                        trigger_id: payload.trigger_id,
+                        view: getEscalationModalView(), // Reusamos la vista
+                    });
+                } catch (err) {
+                    console.error(
+                        '[slack] Error opening modal from shortcut:',
+                        err
+                    );
+                }
+                return;
             }
 
             if (
@@ -446,172 +591,9 @@ router.post(
             const params = Object.fromEntries(new URLSearchParams(raw));
             const { trigger_id } = params;
             res.status(200).send();
-            const view = {
-                type: 'modal',
-                callback_id: 'escalation_modal',
-                title: { type: 'plain_text', text: 'Create Escalation' },
-                submit: { type: 'plain_text', text: 'Submit' },
-                close: { type: 'plain_text', text: 'Cancel' },
-                blocks: [
-                    {
-                        type: 'input',
-                        block_id: 'booking',
-                        element: {
-                            type: 'plain_text_input',
-                            action_id: 'booking_ref',
-                            placeholder: {
-                                type: 'plain_text',
-                                text: 'Reference number',
-                            },
-                        },
-                        label: {
-                            type: 'plain_text',
-                            text: 'Booking reference',
-                        },
-                        hint: {
-                            type: 'plain_text',
-                            text: 'Enter the booking reference number.',
-                        },
-                    },
-                    {
-                        type: 'input',
-                        block_id: 'listing',
-                        element: {
-                            type: 'plain_text_input',
-                            action_id: 'listing_name',
-                            placeholder: {
-                                type: 'plain_text',
-                                text: 'Listing name',
-                            },
-                        },
-                        label: { type: 'plain_text', text: 'Listing name' },
-                        hint: {
-                            type: 'plain_text',
-                            text: 'Enter the name of the listing.',
-                        },
-                    },
-                    {
-                        type: 'input',
-                        block_id: 'guest',
-                        element: {
-                            type: 'plain_text_input',
-                            action_id: 'guest_name',
-                            placeholder: {
-                                type: 'plain_text',
-                                text: 'Guest full name',
-                            },
-                        },
-                        label: { type: 'plain_text', text: 'Guest name' },
-                        hint: {
-                            type: 'plain_text',
-                            text: 'Enter guest name.',
-                        },
-                    },
-                    {
-                        type: 'input',
-                        block_id: 'issue',
-                        element: {
-                            type: 'checkboxes',
-                            action_id: 'issue_type',
-                            options: [
-                                {
-                                    text: {
-                                        type: 'plain_text',
-                                        text: 'Access/Check-in',
-                                    },
-                                    value: 'Access/Check-in',
-                                },
-                                {
-                                    text: {
-                                        type: 'plain_text',
-                                        text: 'Cleanliness/Supplies',
-                                    },
-                                    value: 'Cleanliness/Supplies',
-                                },
-                                {
-                                    text: {
-                                        type: 'plain_text',
-                                        text: 'Property condition',
-                                    },
-                                    value: 'Property condition',
-                                },
-                                {
-                                    text: {
-                                        type: 'plain_text',
-                                        text: 'Noise/Disturbances',
-                                    },
-                                    value: 'Noise/Disturbances',
-                                },
-                                {
-                                    text: {
-                                        type: 'plain_text',
-                                        text: 'Reservation/OTA Issues',
-                                    },
-                                    value: 'Reservation/OTA Issues',
-                                },
-                                {
-                                    text: { type: 'plain_text', text: 'Other' },
-                                    value: 'Other',
-                                },
-                            ],
-                        },
-                        label: { type: 'plain_text', text: 'Issue type' },
-                        hint: {
-                            type: 'plain_text',
-                            text: 'Choose related issue types.',
-                        },
-                    },
-                    {
-                        type: 'input',
-                        block_id: 'summary',
-                        element: {
-                            type: 'plain_text_input',
-                            action_id: 'summary',
-                            multiline: true,
-                            placeholder: {
-                                type: 'plain_text',
-                                text: 'Describe the issue and any immediate impact',
-                            },
-                        },
-                        label: { type: 'plain_text', text: 'Summary' },
-                        hint: {
-                            type: 'plain_text',
-                            text: "What's the escalation about?",
-                        },
-                    },
-                    {
-                        type: 'input',
-                        block_id: 'assign',
-                        element: {
-                            type: 'multi_users_select',
-                            action_id: 'assignees',
-                            placeholder: {
-                                type: 'plain_text',
-                                text: 'Select one or more users',
-                            },
-                        },
-                        label: { type: 'plain_text', text: 'Assign to' },
-                    },
-                    {
-                        type: 'input',
-                        optional: true,
-                        block_id: 'input_block_id',
-                        label: {
-                            type: 'plain_text',
-                            text: 'Attachments',
-                        },
-                        hint: {
-                            type: 'plain_text',
-                            text: 'Provide any support files.',
-                        },
-                        element: {
-                            type: 'file_input',
-                            action_id: 'file_input_action_id_1',
-                            max_files: 5,
-                        },
-                    },
-                ],
-            };
+
+            const view = getEscalationModalView();
+
             await slack.views.open({ trigger_id, view });
         } catch (err) {
             console.error('slash error', err);
