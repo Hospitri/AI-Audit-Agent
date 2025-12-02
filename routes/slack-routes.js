@@ -289,6 +289,26 @@ router.post(
                 return;
             }
 
+            if (payload.type === 'block_actions') {
+                const actionId = payload.actions?.[0]?.action_id;
+
+                if (actionId === 'open_escalation_modal_button') {
+                    res.status(200).send();
+                    try {
+                        await slack.views.open({
+                            trigger_id: payload.trigger_id,
+                            view: getEscalationModalView(),
+                        });
+                    } catch (err) {
+                        console.error(
+                            '[slack] Error opening modal from button:',
+                            err
+                        );
+                    }
+                    return;
+                }
+            }
+
             if (
                 payload.type === 'view_submission' &&
                 payload.view?.callback_id === 'escalation_modal'
