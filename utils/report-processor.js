@@ -34,10 +34,9 @@ async function resolveUserName(userId) {
     return userId;
 }
 
-function constructSlackUrl(channelId, ts) {
-    if (!channelId || !ts) return '';
-    const cleanTs = ts.replace('.', '');
-    return `https://slack.com/archives/${channelId}/p${cleanTs}`;
+function getSlackUrl(channelId, ts) {
+    if (!channelId || !ts) return '#';
+    return `https://slack.com/archives/${channelId}/p${ts.replace('.', '')}`;
 }
 
 function formatJsonToBlocks(reportData, reportType) {
@@ -71,16 +70,25 @@ function formatJsonToBlocks(reportData, reportType) {
         }
 
         items.forEach(item => {
-            let text = `• ${item.summary}`;
+            let summary = item.summary.replace(/^["'-]/, '').trim();
 
-            if (item.property && item.property !== 'N/A')
+            let text = `• ${summary}`;
+
+            if (
+                item.property &&
+                item.property !== 'N/A' &&
+                item.property !== 'Unknown'
+            )
                 text += `\n\t🏠 *Prop:* ${item.property}`;
-            if (item.guest && item.guest !== 'N/A')
+
+            if (item.guest && item.guest !== 'N/A' && item.guest !== 'Unknown')
                 text += `\n\t👤 *Guest:* ${item.guest}`;
+
             if (item.author && item.author !== 'N/A')
                 text += `\n\t✍️ *By:* ${item.author}`;
 
-            if (item.link) text += `\n\t🔗 <${item.link}|View Context>`;
+            if (item.link && item.link !== '#')
+                text += `\n\t🔗 <${item.link}|View Context>`;
 
             blocks.push({
                 type: 'section',
@@ -104,31 +112,29 @@ async function generateSubSummaries(messages) {
     const batches = createBatches(messages, BATCH_DURATION_HOURS);
     const subSummaries = [];
 
-    const L1_SYSTEM_PROMPT = `You are an operational data extraction assistant.
-    Task: Read Slack messages and extract key info.
+    const L1_SYSTEM_PROMPT = `You are an expert operational analyst.
+    Task: Summarize Slack conversations into concise, executive-level status updates.
     
-    CRITICAL LOGIC FOR "ESCALATION NOTIFICATIONS":
-    If a message starts with ":rotating_light: *New Escalation Submitted*" or similar bot structure:
-    1. IGNORE the "Slack User ID" provided in the meta-header.
-    2. INSTEAD, extract the author from the text field "Submitted by:".
-    3. Extract Property from "Listing:".
-    4. Extract Guest from "Guest:".
-    5. Use "Summary:" as the issue description.
-
-    FOR REGULAR MESSAGES:
-    1. Use the provided Author Name.
-    2. Infer Property/Guest from context.
-
-    Output Format per item:
-    "Issue: [Description] | Prop: [Name] | Guest: [Name] | Auth: [Name] | Link: [URL]"
+    INPUT FORMAT:
+    "Author [Name]: [Message] [[LINK_URL]]"
+    
+    REQUIREMENTS:
+    1. **Summarize, Don't Quote:** Do NOT copy the message text. Rewrite it in 3rd person description.
+       - BAD: "we are trying to reach out..."
+       - GOOD: "The team is contacting the cleaning crew regarding..."
+    2. **Extract Metadata:** Identify Property, Guest, and Author. Infer from context if not explicit.
+    3. **Link Preservation:** You MUST include the exact "[[LINK_URL]]" string provided in the input at the end of your summary item.
+    
+    OUTPUT FORMAT (One line per issue):
+    "Issue: [Executive Summary] | Prop: [Name] | Guest: [Name] | Auth: [Name] | Link: [[LINK_URL]]"
     `;
 
     for (const batch of batches) {
         const batchLines = await Promise.all(
             batch.map(async msg => {
                 const authorName = await resolveUserName(msg.user_id);
-                const url = constructSlackUrl(msg.channel_id, msg.message_ts);
-                return `[Meta: UserID=${msg.user_id}, Name=${authorName}, Link=${url}] Content: ${msg.message_text}`;
+                const url = getSlackUrl(msg.channel_id, msg.message_ts);
+                return `Author ${authorName}: ${msg.message_text} [[${url}]]`;
             })
         );
 
@@ -141,10 +147,10 @@ async function generateSubSummaries(messages) {
                     { role: 'system', content: L1_SYSTEM_PROMPT },
                     {
                         role: 'user',
-                        content: `Extract info from these messages:\n\n${batchText}`,
+                        content: `Process these messages:\n\n${batchText}`,
                     },
                 ],
-                max_tokens: 800,
+                max_tokens: 1000,
                 temperature: 0.1,
             });
             subSummaries.push(completion.choices[0].message.content.trim());
@@ -159,30 +165,28 @@ async function generateSubSummaries(messages) {
 async function generateFinalReport(subSummaries, reportType) {
     const allSummariesText = subSummaries.join('\n---\n');
 
-    const L2_SYSTEM_PROMPT = `You are an executive operations manager. 
-    Consolidate the provided summaries into a structured JSON report.
+    const L2_SYSTEM_PROMPT = `You are an Operations Director. Create the Daily Ops Digest JSON.
     
-    Goal: Group items into 3 categories.
+    INPUT: A list of summarized issues like: "Issue: ... | Prop: ... | Link: [[URL]]"
     
-    Categories:
-    1. not_attended: Issues requiring immediate attention where NO action/reply was recorded yet.
-    2. follow_up: Issues pending action, waiting for reply, or in progress.
-    3. resolved_issues: Completed items.
+    TASK: Group these issues into 3 categories based on their status.
+    
+    DEFINITIONS:
+    1. **not_attended**: Issues that have been raised but show NO evidence of a reply or action taken yet.
+    2. **follow_up**: Issues that are being worked on, are waiting for a reply (from guest/owner), or need monitoring.
+    3. **resolved_issues**: Issues explicitly marked as done, fixed, or closed.
 
-    Input format received: "Issue: ... | Prop: ... | Guest: ... | Auth: ... | Link: ..."
-    
-    Output JSON Structure:
+    OUTPUT: Return ONLY a valid JSON object with this structure:
     {
       "not_attended": [ { "summary": string, "property": string, "guest": string, "author": string, "link": string } ],
       "follow_up": [ ... ],
       "resolved_issues": [ ... ]
     }
 
-    Rules:
-    - "summary": Concise description of the issue/action. Clean text, no brackets.
-    - "author": The name of the person who raised the issue (or 'Submitted by' if it was a bot ticket).
-    - "link": The Slack URL provided in input.
-    - If property/guest/author is missing, use "N/A".
+    RULES:
+    - **Link:** Extract the URL from the "[[URL]]" tag in the input and put it in the "link" field.
+    - **Summary:** Use professional, executive language. No "I" or "We". Use "The team", "Staff", etc.
+    - **Missing Data:** If Property or Guest is not found, use "N/A".
     `;
 
     try {
@@ -196,7 +200,7 @@ async function generateFinalReport(subSummaries, reportType) {
                 },
             ],
             response_format: { type: 'json_object' },
-            max_tokens: 2000,
+            max_tokens: 2500,
             temperature: 0.1,
         });
 
@@ -208,8 +212,10 @@ async function generateFinalReport(subSummaries, reportType) {
             not_attended: [],
             follow_up: [
                 {
-                    summary: 'Error generating report content via AI.',
+                    summary:
+                        'Error generating report content via AI. Check logs.',
                     author: 'System',
+                    link: '#',
                 },
             ],
             resolved_issues: [],
@@ -285,13 +291,12 @@ async function publishReport(reportData, reportType) {
     const blocks = formatJsonToBlocks(reportData, reportType);
 
     const typeLabel = reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours';
-    const fallbackText = `Daily Ops Digest - ${typeLabel}`;
 
     try {
         await slack.chat.postMessage({
             channel: TARGET_CHANNEL_ID,
             blocks: blocks,
-            text: fallbackText,
+            text: `Daily Ops Digest - ${typeLabel}`, // Fallback notification
             mrkdwn: true,
         });
         console.log(`[Processor] Report ${reportType} published to Slack.`);
