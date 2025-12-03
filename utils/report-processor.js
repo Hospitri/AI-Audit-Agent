@@ -88,13 +88,13 @@ function formatJsonToBlocks(reportData, reportType) {
                 item.property !== 'N/A' &&
                 item.property !== 'Unknown'
             )
-                contextParts.push(`🏠 *Prop:* ${item.property}`);
+                contextParts.push(`*Prop:* ${item.property}`);
 
             if (item.guest && item.guest !== 'N/A' && item.guest !== 'Unknown')
-                contextParts.push(`👤 *Guest:* ${item.guest}`);
+                contextParts.push(`*Guest:* ${item.guest}`);
 
             if (item.author && item.author !== 'N/A')
-                contextParts.push(`✍️ *By:* ${item.author}`);
+                contextParts.push(`*By:* ${item.author}`);
 
             let linkText = '';
             if (item.link && item.link !== '#') {
@@ -145,20 +145,20 @@ async function saveReportToNotion(finalReportContent, reportType) {
         await notion.pages.create({
             parent: { database_id: NOTION_DB_ID },
             properties: {
-                Name: {
+                id: {
                     title: [{ text: { content: title } }],
                 },
-                'Report Type': {
+                type: {
                     select: {
                         name: typeLabel,
                     },
                 },
-                Timestamp: {
+                timestamp: {
                     date: {
                         start: new Date().toISOString(),
                     },
                 },
-                'Report Content': {
+                report: {
                     rich_text: [{ text: { content: contentTruncated } }],
                 },
             },
