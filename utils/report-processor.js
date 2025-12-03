@@ -63,8 +63,10 @@ function formatJsonToBlocks(reportData, reportType) {
 
         if (!items || items.length === 0) {
             blocks.push({
-                type: 'section',
-                text: { type: 'mrkdwn', text: '_None_' },
+                type: 'context',
+                elements: [
+                    { type: 'mrkdwn', text: '_No items in this category._' },
+                ],
             });
             return;
         }
@@ -74,21 +76,31 @@ function formatJsonToBlocks(reportData, reportType) {
 
             let text = `• ${summary}`;
 
+            let contextParts = [];
+
             if (
                 item.property &&
                 item.property !== 'N/A' &&
                 item.property !== 'Unknown'
             )
-                text += `\n\t🏠 *Prop:* ${item.property}`;
+                contextParts.push(`🏠 *Prop:* ${item.property}`);
 
             if (item.guest && item.guest !== 'N/A' && item.guest !== 'Unknown')
-                text += `\n\t👤 *Guest:* ${item.guest}`;
+                contextParts.push(`👤 *Guest:* ${item.guest}`);
 
             if (item.author && item.author !== 'N/A')
-                text += `\n\t✍️ *By:* ${item.author}`;
+                contextParts.push(`✍️ *By:* ${item.author}`);
 
-            if (item.link && item.link !== '#')
-                text += `\n\t🔗 <${item.link}|View Context>`;
+            let linkText = '';
+            if (item.link && item.link !== '#') {
+                linkText = `  🔗 <${item.link}|View Context>`;
+            }
+
+            if (contextParts.length > 0) {
+                text += `\n\t${contextParts.join('  |  ')}${linkText}`;
+            } else if (linkText) {
+                text += `\n\t${linkText.trim()}`;
+            }
 
             blocks.push({
                 type: 'section',
@@ -296,7 +308,7 @@ async function publishReport(reportData, reportType) {
         await slack.chat.postMessage({
             channel: TARGET_CHANNEL_ID,
             blocks: blocks,
-            text: `Daily Ops Digest - ${typeLabel}`, // Fallback notification
+            text: `Daily Ops Digest - ${typeLabel}`,
             mrkdwn: true,
         });
         console.log(`[Processor] Report ${reportType} published to Slack.`);
