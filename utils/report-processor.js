@@ -14,9 +14,7 @@ const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
 const userCache = new Map();
 
 async function resolveUserName(userId) {
-    if (userCache.has(userId)) {
-        return userCache.get(userId);
-    }
+    if (userCache.has(userId)) return userCache.get(userId);
     try {
         const response = await slack.users.info({ user: userId });
         if (response.ok && response.user) {
@@ -42,7 +40,7 @@ function constructSlackUrl(channelId, ts) {
     return `https://slack.com/archives/${channelId}/p${cleanTs}`;
 }
 
-function formatGptContentToBlocks(reportContent, reportType) {
+function formatJsonToBlocks(reportData, reportType) {
     const typeLabel = reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours';
     const dateStr = new Date().toLocaleDateString('en-US');
 
@@ -58,64 +56,46 @@ function formatGptContentToBlocks(reportContent, reportType) {
         { type: 'divider' },
     ];
 
-    const lines = reportContent
-        .split('\n')
-        .filter(line => line.trim().length > 0);
-
-    let currentSectionText = '';
-
-    const pushSection = text => {
-        if (text.trim()) {
-            blocks.push({
-                type: 'section',
-                text: { type: 'mrkdwn', text: text.trim() },
-            });
-        }
-    };
-
-    lines.forEach(line => {
-        const lowerLine = line.toLowerCase();
-
-        if (lowerLine.includes('not attended')) {
-            pushSection(currentSectionText);
-            currentSectionText = '';
-            blocks.push({
-                type: 'section',
-                text: { type: 'mrkdwn', text: '*🚨 Not Attended*' },
-            });
-        } else if (lowerLine.includes('follow up')) {
-            pushSection(currentSectionText);
-            currentSectionText = '';
-            blocks.push({ type: 'divider' });
-            blocks.push({
-                type: 'section',
-                text: { type: 'mrkdwn', text: '*⚠️ Follow Up*' },
-            });
-        } else if (lowerLine.includes('resolved issues')) {
-            pushSection(currentSectionText);
-            currentSectionText = '';
-            blocks.push({ type: 'divider' });
-            blocks.push({
-                type: 'section',
-                text: { type: 'mrkdwn', text: '*✅ Resolved Issues*' },
-            });
-        } else {
-            if (line.trim().match(/^[-*]/)) {
-                currentSectionText += `${line.trim()}\n`;
-            } else {
-                currentSectionText += `${line.trim()}\n`;
-            }
-        }
-    });
-
-    pushSection(currentSectionText);
-
-    if (blocks.length <= 2) {
+    const generateSectionBlocks = (title, items) => {
         blocks.push({
             type: 'section',
-            text: { type: 'mrkdwn', text: reportContent },
+            text: { type: 'mrkdwn', text: title },
         });
-    }
+
+        if (!items || items.length === 0) {
+            blocks.push({
+                type: 'section',
+                text: { type: 'mrkdwn', text: '_None_' },
+            });
+            return;
+        }
+
+        items.forEach(item => {
+            let text = `• ${item.summary}`;
+
+            if (item.property && item.property !== 'N/A')
+                text += `\n\t🏠 *Prop:* ${item.property}`;
+            if (item.guest && item.guest !== 'N/A')
+                text += `\n\t👤 *Guest:* ${item.guest}`;
+            if (item.author && item.author !== 'N/A')
+                text += `\n\t✍️ *By:* ${item.author}`;
+
+            if (item.link) text += `\n\t🔗 <${item.link}|View Context>`;
+
+            blocks.push({
+                type: 'section',
+                text: { type: 'mrkdwn', text: text },
+            });
+        });
+    };
+
+    generateSectionBlocks('*🚨 Not Attended*', reportData.not_attended);
+    blocks.push({ type: 'divider' });
+
+    generateSectionBlocks('*⚠️ Follow Up*', reportData.follow_up);
+    blocks.push({ type: 'divider' });
+
+    generateSectionBlocks('*✅ Resolved Issues*', reportData.resolved_issues);
 
     return blocks;
 }
@@ -124,40 +104,48 @@ async function generateSubSummaries(messages) {
     const batches = createBatches(messages, BATCH_DURATION_HOURS);
     const subSummaries = [];
 
-    const L1_SYSTEM_PROMPT = `You are an operational summary assistant. 
-    Task: Read the raw Slack messages and generate concise summaries.
+    const L1_SYSTEM_PROMPT = `You are an operational data extraction assistant.
+    Task: Read Slack messages and extract key info.
     
-    CRITICAL INSTRUCTION:
-    1. Filter noise.
-    2. Write a descriptive sentence of the issue/action.
-    3. Extract Metadata: Property, Guest, Author.
-    4. APPEND THE CONTEXT LINK: The input includes a "[Link: URL]" for messages. You MUST include this link at the end of the item using Slack syntax: <URL|View Context>.
-    
-    Format for each item:
-    "[Description] (Prop: [Name], Guest: [Name], By: [Author Name]) <[URL]|View Context>"
-    
-    If multiple messages discuss the same issue, use the link from the first message.`;
+    CRITICAL LOGIC FOR "ESCALATION NOTIFICATIONS":
+    If a message starts with ":rotating_light: *New Escalation Submitted*" or similar bot structure:
+    1. IGNORE the "Slack User ID" provided in the meta-header.
+    2. INSTEAD, extract the author from the text field "Submitted by:".
+    3. Extract Property from "Listing:".
+    4. Extract Guest from "Guest:".
+    5. Use "Summary:" as the issue description.
+
+    FOR REGULAR MESSAGES:
+    1. Use the provided Author Name.
+    2. Infer Property/Guest from context.
+
+    Output Format per item:
+    "Issue: [Description] | Prop: [Name] | Guest: [Name] | Auth: [Name] | Link: [URL]"
+    `;
 
     for (const batch of batches) {
         const batchLines = await Promise.all(
             batch.map(async msg => {
                 const authorName = await resolveUserName(msg.user_id);
                 const url = constructSlackUrl(msg.channel_id, msg.message_ts);
-                return `Author ${authorName}: ${msg.message_text} [Link: ${url}]`;
+                return `[Meta: UserID=${msg.user_id}, Name=${authorName}, Link=${url}] Content: ${msg.message_text}`;
             })
         );
 
-        const batchText = batchLines.join('\n');
+        const batchText = batchLines.join('\n\n');
 
         try {
             const completion = await openai.chat.completions.create({
                 model: TARGET_MODEL,
                 messages: [
                     { role: 'system', content: L1_SYSTEM_PROMPT },
-                    { role: 'user', content: `Summarize:\n\n${batchText}` },
+                    {
+                        role: 'user',
+                        content: `Extract info from these messages:\n\n${batchText}`,
+                    },
                 ],
                 max_tokens: 800,
-                temperature: 0.2,
+                temperature: 0.1,
             });
             subSummaries.push(completion.choices[0].message.content.trim());
         } catch (e) {
@@ -171,34 +159,61 @@ async function generateSubSummaries(messages) {
 async function generateFinalReport(subSummaries, reportType) {
     const allSummariesText = subSummaries.join('\n---\n');
 
-    const L2_SYSTEM_PROMPT = `You are an executive operations manager. Consolidate daily summaries.
+    const L2_SYSTEM_PROMPT = `You are an executive operations manager. 
+    Consolidate the provided summaries into a structured JSON report.
     
-    You will receive items like: "...description... (Context) <URL|View Context>".
+    Goal: Group items into 3 categories.
     
-    GOAL: Group items into the 3 sections below.
-    CRITICAL: You MUST preserve the "<URL|View Context>" link at the end of every item.
-    
-    STRICT STRUCTURE:
-    1. Not Attended
-    2. Follow Up
-    3. Resolved Issues
+    Categories:
+    1. not_attended: Issues requiring immediate attention where NO action/reply was recorded yet.
+    2. follow_up: Issues pending action, waiting for reply, or in progress.
+    3. resolved_issues: Completed items.
 
-    Format: "- [Description] (Prop: X, Guest: Y, By: Z) <URL|View Context>"`;
+    Input format received: "Issue: ... | Prop: ... | Guest: ... | Auth: ... | Link: ..."
+    
+    Output JSON Structure:
+    {
+      "not_attended": [ { "summary": string, "property": string, "guest": string, "author": string, "link": string } ],
+      "follow_up": [ ... ],
+      "resolved_issues": [ ... ]
+    }
+
+    Rules:
+    - "summary": Concise description of the issue/action. Clean text, no brackets.
+    - "author": The name of the person who raised the issue (or 'Submitted by' if it was a bot ticket).
+    - "link": The Slack URL provided in input.
+    - If property/guest/author is missing, use "N/A".
+    `;
 
     try {
         const completion = await openai.chat.completions.create({
             model: TARGET_MODEL,
             messages: [
                 { role: 'system', content: L2_SYSTEM_PROMPT },
-                { role: 'user', content: `Summaries:\n\n${allSummariesText}` },
+                {
+                    role: 'user',
+                    content: `Data to process:\n\n${allSummariesText}`,
+                },
             ],
-            max_tokens: 1500,
+            response_format: { type: 'json_object' },
+            max_tokens: 2000,
             temperature: 0.1,
         });
-        return completion.choices[0].message.content.trim();
+
+        const jsonResponse = JSON.parse(completion.choices[0].message.content);
+        return jsonResponse;
     } catch (e) {
-        console.error('[GPT_L2] Error:', e.message);
-        return `Report Generation Failed.`;
+        console.error('[GPT_L2] Error generating final report:', e.message);
+        return {
+            not_attended: [],
+            follow_up: [
+                {
+                    summary: 'Error generating report content via AI.',
+                    author: 'System',
+                },
+            ],
+            resolved_issues: [],
+        };
     }
 }
 
@@ -266,8 +281,8 @@ function createBatches(messages, durationHours) {
     return batches;
 }
 
-async function publishReport(finalReportContent, reportType) {
-    const blocks = formatGptContentToBlocks(finalReportContent, reportType);
+async function publishReport(reportData, reportType) {
+    const blocks = formatJsonToBlocks(reportData, reportType);
 
     const typeLabel = reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours';
     const fallbackText = `Daily Ops Digest - ${typeLabel}`;
@@ -342,17 +357,14 @@ async function processReport(reportType) {
         }
 
         const subSummaries = await generateSubSummaries(messages);
-        const finalReportContent = await generateFinalReport(
+        const finalReportData = await generateFinalReport(
             subSummaries,
             reportType
         );
 
-        await publishReport(finalReportContent, reportType);
+        await publishReport(finalReportData, reportType);
 
-        // await markMessagesAsProcessed(
-        //     messages,
-        //     `report-${reportType}-${Date.now()}`
-        // );
+        // await markMessagesAsProcessed(messages, `report-${reportType}-${Date.now()}`);
 
         console.log(`[Processor:${reportType}] Finished.`);
     } catch (error) {
