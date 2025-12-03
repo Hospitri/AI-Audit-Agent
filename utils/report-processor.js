@@ -1,15 +1,20 @@
 const OpenAI = require('openai');
 const { pool: db } = require('./db.js');
 const { WebClient } = require('@slack/web-api');
+const { Client: NotionClient } = require('@notionhq/client');
 
 const TARGET_MODEL = 'gpt-4o-mini';
 const TARGET_CHANNEL_ID = process.env.SLACK_SUMMARY_CHANNEL;
+const NOTION_DB_ID = process.env.NOTION_SUMMARY_DB_ID;
 const BATCH_DURATION_HOURS = 3;
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
 });
 const slack = new WebClient(process.env.SLACK_BOT_TOKEN);
+const notion = new NotionClient({
+    auth: process.env.NOTION_API_KEY || process.env.NOTION_TOKEN,
+});
 
 const userCache = new Map();
 
@@ -120,6 +125,72 @@ function formatJsonToBlocks(reportData, reportType) {
     return blocks;
 }
 
+async function saveReportToNotion(finalReportContent, reportType) {
+    if (!NOTION_DB_ID) {
+        console.warn(
+            '[Processor] NOTION_SUMMARY_DB_ID not set. Skipping Notion save.'
+        );
+        return;
+    }
+
+    const typeLabel = reportType === 'ON_HOURS' ? 'On-hours' : 'Off-hours';
+    const title = `Ops Digest - ${new Date().toLocaleDateString('en-US')}`;
+
+    const contentTruncated =
+        finalReportContent.length > 2000
+            ? finalReportContent.substring(0, 1997) + '...'
+            : finalReportContent;
+
+    try {
+        await notion.pages.create({
+            parent: { database_id: NOTION_DB_ID },
+            properties: {
+                Name: {
+                    title: [{ text: { content: title } }],
+                },
+                'Report Type': {
+                    select: {
+                        name: typeLabel,
+                    },
+                },
+                Timestamp: {
+                    date: {
+                        start: new Date().toISOString(),
+                    },
+                },
+                'Report Content': {
+                    rich_text: [{ text: { content: contentTruncated } }],
+                },
+            },
+            children: [
+                {
+                    object: 'block',
+                    type: 'paragraph',
+                    paragraph: {
+                        rich_text: [
+                            {
+                                type: 'text',
+                                text: {
+                                    content: finalReportContent.substring(
+                                        0,
+                                        2000
+                                    ),
+                                },
+                            },
+                        ],
+                    },
+                },
+            ],
+        });
+        console.log(`[Processor] Report saved to Notion successfully.`);
+    } catch (error) {
+        console.error(
+            '[Processor] Failed to save report to Notion:',
+            error.body || error.message
+        );
+    }
+}
+
 async function generateSubSummaries(messages) {
     const batches = createBatches(messages, BATCH_DURATION_HOURS);
     const subSummaries = [];
@@ -224,8 +295,7 @@ async function generateFinalReport(subSummaries, reportType) {
             not_attended: [],
             follow_up: [
                 {
-                    summary:
-                        'Error generating report content via AI. Check logs.',
+                    summary: 'Error generating report content via AI.',
                     author: 'System',
                     link: '#',
                 },
@@ -233,6 +303,28 @@ async function generateFinalReport(subSummaries, reportType) {
             resolved_issues: [],
         };
     }
+}
+
+function convertJsonReportToText(reportData) {
+    let text = '';
+
+    const appendSection = (title, items) => {
+        text += `${title}\n`;
+        if (!items || items.length === 0) {
+            text += '- None\n\n';
+            return;
+        }
+        items.forEach(item => {
+            text += `- ${item.summary} (Prop: ${item.property}, Guest: ${item.guest}, By: ${item.author})\n`;
+        });
+        text += '\n';
+    };
+
+    appendSection('🚨 Not Attended', reportData.not_attended);
+    appendSection('⚠️ Follow Up', reportData.follow_up);
+    appendSection('✅ Resolved Issues', reportData.resolved_issues);
+
+    return text;
 }
 
 function getReportTimeRange(reportType) {
@@ -258,9 +350,7 @@ async function fetchUnprocessedMessages(startTime, endTime) {
         const result = await db.query(
             `SELECT message_text, user_id, message_ts, thread_ts, id, channel_id
              FROM slack_messages 
-             WHERE created_at >= $1 
-               AND created_at < $2 
-               AND processed_report_id IS NULL
+             WHERE created_at >= $1 AND created_at < $2 AND processed_report_id IS NULL
              ORDER BY message_ts ASC`,
             [startTime, endTime]
         );
@@ -369,6 +459,11 @@ async function processReport(reportType) {
                 text: `Daily Ops Digest - ${typeLabel}`,
             });
 
+            await saveReportToNotion(
+                'No significant activity recorded.',
+                reportType
+            );
+
             console.log(`[Processor:${reportType}] No new messages.`);
             return;
         }
@@ -381,7 +476,12 @@ async function processReport(reportType) {
 
         await publishReport(finalReportData, reportType);
 
-        // await markMessagesAsProcessed(messages, `report-${reportType}-${Date.now()}`);
+        const textReportForNotion = convertJsonReportToText(finalReportData);
+        await saveReportToNotion(textReportForNotion, reportType);
+
+        const reportId = `report-${reportType}-${Date.now()}`;
+        await markMessagesAsProcessed(messages, reportId);
+        // await markMessagesAsProcessed(messages, reportId);
 
         console.log(`[Processor:${reportType}] Finished.`);
     } catch (error) {
