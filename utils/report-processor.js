@@ -481,7 +481,6 @@ async function processReport(reportType) {
 
         const reportId = `report-${reportType}-${Date.now()}`;
         await markMessagesAsProcessed(messages, reportId);
-        // await markMessagesAsProcessed(messages, reportId);
 
         console.log(`[Processor:${reportType}] Finished.`);
     } catch (error) {
