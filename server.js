@@ -17,7 +17,7 @@ const app = express();
 const TIMEZONE = 'America/Puerto_Rico';
 
 cron.schedule(
-    '0 18 * * *',
+    '0 18 * * 1-5',
     () => {
         console.log('[Cron] Executing ON-HOURS Report (18:00)...');
         processReport('ON_HOURS');
@@ -28,7 +28,7 @@ cron.schedule(
 );
 
 cron.schedule(
-    '0 9 * * *',
+    '0 9 * * 1-5',
     () => {
         console.log('[Cron] Executing OFF-HOURS Report (09:00)...');
         processReport('OFF_HOURS');
@@ -38,7 +38,7 @@ cron.schedule(
     }
 );
 
-// processReport('ON_HOURS');
+processReport('ON_HOURS');
 
 app.use('/slack', slackRoutes);
 app.use(bodyParser.json());
