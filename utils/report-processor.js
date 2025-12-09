@@ -329,6 +329,8 @@ async function generateFinalReport(subSummaries, reportType) {
 
 function getReportTimeRange(reportType) {
     const now = new Date();
+    const dayOfWeek = now.getDay();
+
     let startTime, endTime;
 
     if (reportType === 'ON_HOURS') {
@@ -337,8 +339,10 @@ function getReportTimeRange(reportType) {
     } else {
         endTime = new Date(now.setHours(9, 0, 0, 0));
 
+        const daysBack = dayOfWeek === 1 ? 3 : 1;
+
         startTime = new Date(now);
-        startTime.setDate(now.getDate() - 1);
+        startTime.setDate(now.getDate() - daysBack);
         startTime.setHours(18, 0, 0, 0);
     }
 
