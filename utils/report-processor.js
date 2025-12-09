@@ -98,7 +98,7 @@ function formatJsonToBlocks(reportData, reportType) {
 
             let linkText = '';
             if (item.link && item.link !== '#') {
-                linkText = `  🔗 <${item.link}|View Context>`;
+                linkText = `  <${item.link}|View Context>`;
             }
 
             if (contextParts.length > 0) {
@@ -125,6 +125,28 @@ function formatJsonToBlocks(reportData, reportType) {
     return blocks;
 }
 
+function convertJsonReportToText(reportData) {
+    let text = '';
+
+    const appendSection = (title, items) => {
+        text += `${title}\n`;
+        if (!items || items.length === 0) {
+            text += '- None\n\n';
+            return;
+        }
+        items.forEach(item => {
+            text += `- ${item.summary} (Prop: ${item.property}, Guest: ${item.guest}, By: ${item.author})\n`;
+        });
+        text += '\n';
+    };
+
+    appendSection('🚨 Not Attended', reportData.not_attended);
+    appendSection('⚠️ Follow Up', reportData.follow_up);
+    appendSection('✅ Resolved Issues', reportData.resolved_issues);
+
+    return text;
+}
+
 async function saveReportToNotion(finalReportContent, reportType) {
     if (!NOTION_DB_ID) {
         console.warn(
@@ -145,20 +167,20 @@ async function saveReportToNotion(finalReportContent, reportType) {
         await notion.pages.create({
             parent: { database_id: NOTION_DB_ID },
             properties: {
-                id: {
+                ID: {
                     title: [{ text: { content: title } }],
                 },
-                type: {
+                Type: {
                     select: {
                         name: typeLabel,
                     },
                 },
-                timestamp: {
+                Timestamp: {
                     date: {
                         start: new Date().toISOString(),
                     },
                 },
-                report: {
+                Report: {
                     rich_text: [{ text: { content: contentTruncated } }],
                 },
             },
@@ -305,28 +327,6 @@ async function generateFinalReport(subSummaries, reportType) {
     }
 }
 
-function convertJsonReportToText(reportData) {
-    let text = '';
-
-    const appendSection = (title, items) => {
-        text += `${title}\n`;
-        if (!items || items.length === 0) {
-            text += '- None\n\n';
-            return;
-        }
-        items.forEach(item => {
-            text += `- ${item.summary} (Prop: ${item.property}, Guest: ${item.guest}, By: ${item.author})\n`;
-        });
-        text += '\n';
-    };
-
-    appendSection('🚨 Not Attended', reportData.not_attended);
-    appendSection('⚠️ Follow Up', reportData.follow_up);
-    appendSection('✅ Resolved Issues', reportData.resolved_issues);
-
-    return text;
-}
-
 function getReportTimeRange(reportType) {
     const now = new Date();
     let startTime, endTime;
@@ -432,6 +432,8 @@ async function processReport(reportType) {
         if (messages.length === 0) {
             const typeLabel =
                 reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours';
+            const emptyMsg = `_No significant activity recorded between ${startTime.toLocaleTimeString()} and ${endTime.toLocaleTimeString()}._`;
+
             const blocks = [
                 {
                     type: 'header',
@@ -448,7 +450,7 @@ async function processReport(reportType) {
                     type: 'section',
                     text: {
                         type: 'mrkdwn',
-                        text: `_No significant activity recorded between ${startTime.toLocaleTimeString()} and ${endTime.toLocaleTimeString()}._`,
+                        text: emptyMsg,
                     },
                 },
             ];
@@ -480,7 +482,7 @@ async function processReport(reportType) {
         await saveReportToNotion(textReportForNotion, reportType);
 
         const reportId = `report-${reportType}-${Date.now()}`;
-        await markMessagesAsProcessed(messages, reportId);
+        // await markMessagesAsProcessed(messages, reportId);
 
         console.log(`[Processor:${reportType}] Finished.`);
     } catch (error) {
