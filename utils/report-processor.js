@@ -250,7 +250,7 @@ async function generateSubSummaries(messages) {
                     { role: 'system', content: L1_SYSTEM_PROMPT },
                     { role: 'user', content: `Summarize:\n\n${batchText}` },
                 ],
-                max_tokens: 1000,
+                max_completion_tokens: 1000,
                 reasoning_effort: 'low',
             });
             subSummaries.push(completion.choices[0].message.content.trim());
@@ -288,7 +288,7 @@ async function generateFinalReport(subSummaries, reportType) {
                 { role: 'user', content: `Summaries:\n\n${allSummariesText}` },
             ],
             response_format: { type: 'json_object' },
-            max_tokens: 2500,
+            max_completion_tokens: 2500,
             reasoning_effort: 'low',
         });
         return completion.choices[0].message.content.trim();
