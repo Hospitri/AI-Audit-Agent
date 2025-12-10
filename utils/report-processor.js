@@ -3,7 +3,7 @@ const { pool: db } = require('./db.js');
 const { WebClient } = require('@slack/web-api');
 const { Client: NotionClient } = require('@notionhq/client');
 
-const TARGET_MODEL = 'gpt-5-nano';
+const TARGET_MODEL = 'gpt-4o';
 const TARGET_CHANNEL_ID = process.env.SLACK_SUMMARY_CHANNEL;
 const NOTION_DB_ID = process.env.NOTION_SUMMARY_DB_ID;
 const BATCH_DURATION_HOURS = 3;
@@ -226,7 +226,7 @@ async function generateSubSummaries(messages) {
     REQUIREMENTS:
     1. **Summarize, Don't Quote:** Rewrite content in 3rd person description (e.g., "The team is contacting...").
     2. **Extract Metadata:** Identify Property, Guest, and Author. Infer from context.
-    3. **CRITICAL - LINK HANDLING:** The input ends with a tag like [[https://...]]. You MUST copy this tag EXACTLY as is to the output. Do NOT alter it, do NOT shorten it, and do NOT invent a new one. Treat it as a unique ID.
+    3. **CRITICAL - LINK HANDLING:** The input ends with a tag like [[https://...]]. You MUST copy this tag EXACTLY as is to the output. Do NOT alter it.
     
     OUTPUT FORMAT (One line per issue):
     "Issue: [Executive Summary] | Prop: [Name] | Guest: [Name] | Auth: [Name] | Link: [[LINK_URL]]"
@@ -250,8 +250,8 @@ async function generateSubSummaries(messages) {
                     { role: 'system', content: L1_SYSTEM_PROMPT },
                     { role: 'user', content: `Summarize:\n\n${batchText}` },
                 ],
-                max_completion_tokens: 1000,
-                reasoning_effort: 'low',
+                max_tokens: 1000,
+                temperature: 0.1,
             });
             subSummaries.push(completion.choices[0].message.content.trim());
         } catch (e) {
@@ -263,19 +263,33 @@ async function generateSubSummaries(messages) {
 }
 
 async function generateFinalReport(subSummaries, reportType) {
+    console.log(
+        '[Debug] SubSummaries from L1:',
+        JSON.stringify(subSummaries, null, 2)
+    );
+
     const allSummariesText = subSummaries.join('\n---\n');
 
     const L2_SYSTEM_PROMPT = `You are an Operations Director. Create the Daily Ops Digest JSON.
     
     INPUT: A list of summarized issues like: "Issue: ... | Prop: ... | Link: [[URL]]"
     
-    TASK: Group these issues into 3 categories (not_attended, follow_up, resolved_issues).
+    TASK: Group these issues into 3 categories based on their status.
     
-    OUTPUT: Return ONLY a valid JSON object.
-    STRUCTURE: { "not_attended": [...], "follow_up": [...], "resolved_issues": [...] }
-    
+    DEFINITIONS:
+    1. **not_attended**: Issues that have been raised but show NO evidence of a reply or action taken yet.
+    2. **follow_up**: Issues that are being worked on, are waiting for a reply, or need monitoring.
+    3. **resolved_issues**: Issues explicitly marked as done, fixed, or closed.
+
+    OUTPUT: Return ONLY a valid JSON object with this structure:
+    {
+      "not_attended": [ { "summary": string, "property": string, "guest": string, "author": string, "link": string } ],
+      "follow_up": [ ... ],
+      "resolved_issues": [ ... ]
+    }
+
     RULES:
-    - **Link:** Extract the URL strictly from the "[[URL]]" tag in the input. If the input link looks broken or is missing, use "#". NEVER invent a URL.
+    - **Link:** Extract the URL strictly from the "[[URL]]" tag in the input. If missing use "#". NEVER invent a URL.
     - **Summary:** Use professional, executive language.
     - **Missing Data:** If Property or Guest is not found, use "N/A".
     `;
@@ -285,13 +299,18 @@ async function generateFinalReport(subSummaries, reportType) {
             model: TARGET_MODEL,
             messages: [
                 { role: 'system', content: L2_SYSTEM_PROMPT },
-                { role: 'user', content: `Summaries:\n\n${allSummariesText}` },
+                {
+                    role: 'user',
+                    content: `Data to process:\n\n${allSummariesText}`,
+                },
             ],
             response_format: { type: 'json_object' },
-            max_completion_tokens: 2500,
-            reasoning_effort: 'low',
+            max_tokens: 2500,
+            temperature: 0.1,
         });
-        return completion.choices[0].message.content.trim();
+
+        const jsonResponse = JSON.parse(completion.choices[0].message.content);
+        return jsonResponse;
     } catch (e) {
         console.error('[GPT_L2] Error generating final report:', e.message);
         return {
