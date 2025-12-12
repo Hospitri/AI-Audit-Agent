@@ -3,7 +3,7 @@ const { pool: db } = require('./db.js');
 const { WebClient } = require('@slack/web-api');
 const { Client: NotionClient } = require('@notionhq/client');
 
-const TARGET_MODEL = 'gpt-4o';
+const TARGET_MODEL = 'gpt-4o-mini';
 const TARGET_CHANNEL_ID = process.env.SLACK_SUMMARY_CHANNEL;
 const NOTION_DB_ID = process.env.NOTION_SUMMARY_DB_ID;
 const BATCH_DURATION_HOURS = 3;
@@ -39,8 +39,22 @@ async function resolveUserName(userId) {
     return userId;
 }
 
-function getSlackUrl(channelId, ts) {
+async function getSlackUrl(channelId, ts) {
     if (!channelId || !ts) return '#';
+    try {
+        const result = await slack.chat.getPermalink({
+            channel: channelId,
+            message_ts: ts,
+        });
+        if (result.ok) {
+            return result.permalink;
+        }
+    } catch (error) {
+        console.warn(
+            `[Processor] Failed to get permalink for ${ts}:`,
+            error.message
+        );
+    }
     return `https://slack.com/archives/${channelId}/p${ts.replace('.', '')}`;
 }
 
@@ -85,26 +99,30 @@ function formatJsonToBlocks(reportData, reportType) {
 
             if (
                 item.property &&
-                item.property !== 'N/A' &&
-                item.property !== 'Unknown'
+                !['N/A', 'Unknown', 'n/a'].includes(item.property)
             )
                 contextParts.push(`*Prop:* ${item.property}`);
 
-            if (item.guest && item.guest !== 'N/A' && item.guest !== 'Unknown')
+            if (item.guest && !['N/A', 'Unknown', 'n/a'].includes(item.guest))
                 contextParts.push(`*Guest:* ${item.guest}`);
 
-            if (item.author && item.author !== 'N/A')
+            if (item.author && !['N/A', 'Unknown', 'n/a'].includes(item.author))
                 contextParts.push(`*By:* ${item.author}`);
 
             let linkText = '';
-            if (item.link && item.link !== '#') {
+            if (
+                item.link &&
+                item.link !== '#' &&
+                !item.link.includes('undefined')
+            ) {
                 linkText = `  <${item.link}|View Context>`;
             }
 
             if (contextParts.length > 0) {
-                text += `\n\t${contextParts.join('  |  ')}${linkText}`;
-            } else if (linkText) {
-                text += `\n\t${linkText.trim()}`;
+                text += `\n\t${contextParts.join('  |  ')}`;
+            }
+            if (linkText) {
+                text += `  ${linkText}`;
             }
 
             blocks.push({
@@ -167,19 +185,9 @@ async function saveReportToNotion(finalReportContent, reportType) {
         await notion.pages.create({
             parent: { database_id: NOTION_DB_ID },
             properties: {
-                ID: {
-                    title: [{ text: { content: title } }],
-                },
-                Type: {
-                    select: {
-                        name: typeLabel,
-                    },
-                },
-                Timestamp: {
-                    date: {
-                        start: new Date().toISOString(),
-                    },
-                },
+                ID: { title: [{ text: { content: title } }] },
+                Type: { select: { name: typeLabel } },
+                Timestamp: { date: { start: new Date().toISOString() } },
                 Report: {
                     rich_text: [{ text: { content: contentTruncated } }],
                 },
@@ -217,26 +225,31 @@ async function generateSubSummaries(messages) {
     const batches = createBatches(messages, BATCH_DURATION_HOURS);
     const subSummaries = [];
 
-    const L1_SYSTEM_PROMPT = `You are an expert operational analyst.
-    Task: Summarize Slack conversations into concise, executive-level status updates.
+    const L1_SYSTEM_PROMPT = `You are a data extraction engine.
+    Task: Analyze Slack messages and extract structured data.
     
-    INPUT FORMAT:
-    "Author [Name]: [Message] [[LINK_URL]]"
-    
-    REQUIREMENTS:
-    1. **Summarize, Don't Quote:** Rewrite content in 3rd person description (e.g., "The team is contacting...").
-    2. **Extract Metadata:** Identify Property, Guest, and Author. Infer from context.
-    3. **CRITICAL - LINK HANDLING:** The input ends with a tag like [[https://...]]. You MUST copy this tag EXACTLY as is to the output. Do NOT alter it.
-    
-    OUTPUT FORMAT (One line per issue):
-    "Issue: [Executive Summary] | Prop: [Name] | Guest: [Name] | Auth: [Name] | Link: [[LINK_URL]]"
+    For each message provided:
+    1. Identify the **Property Name** (if mentioned or implied). If unknown, use "N/A".
+    2. Identify the **Guest Name** (if mentioned). If unknown, use "N/A".
+    3. Identify the **Author Name** (provided in input).
+    4. Write a concise **Summary** of the issue/action (3rd person).
+    5. **Preserve the Link**: Copy the [[LINK]] tag exactly.
+
+    Input format: "Author [Name]: [Text] [[LINK]]"
+
+    Output: A valid JSON object containing an array "items":
+    {
+      "items": [
+        { "summary": "...", "property": "...", "guest": "...", "author": "...", "link": "..." }
+      ]
+    }
     `;
 
     for (const batch of batches) {
         const batchLines = await Promise.all(
             batch.map(async msg => {
                 const authorName = await resolveUserName(msg.user_id);
-                const url = getSlackUrl(msg.channel_id, msg.message_ts);
+                const url = await getSlackUrl(msg.channel_id, msg.message_ts);
                 return `Author ${authorName}: ${msg.message_text} [[${url}]]`;
             })
         );
@@ -248,50 +261,60 @@ async function generateSubSummaries(messages) {
                 model: TARGET_MODEL,
                 messages: [
                     { role: 'system', content: L1_SYSTEM_PROMPT },
-                    { role: 'user', content: `Summarize:\n\n${batchText}` },
+                    {
+                        role: 'user',
+                        content: `Extract data from:\n\n${batchText}`,
+                    },
                 ],
-                max_tokens: 1000,
+                response_format: { type: 'json_object' },
+                max_tokens: 1500,
                 temperature: 0.1,
             });
-            subSummaries.push(completion.choices[0].message.content.trim());
+            const content = completion.choices[0].message.content;
+            subSummaries.push(content);
         } catch (e) {
             console.error('[GPT_L1] Error:', e.message);
-            subSummaries.push(`[ERROR processing batch]`);
         }
     }
     return subSummaries;
 }
 
-async function generateFinalReport(subSummaries, reportType) {
-    console.log(
-        '[Debug] SubSummaries from L1:',
-        JSON.stringify(subSummaries, null, 2)
-    );
+async function generateFinalReport(subSummariesJsonList, reportType) {
+    let allItems = [];
+    subSummariesJsonList.forEach(jsonStr => {
+        try {
+            const parsed = JSON.parse(jsonStr);
+            if (parsed.items && Array.isArray(parsed.items)) {
+                allItems = allItems.concat(parsed.items);
+            }
+        } catch (e) {
+            console.error('Error parsing L1 JSON chunk', e);
+        }
+    });
 
-    const allSummariesText = subSummaries.join('\n---\n');
+    const allItemsString = JSON.stringify(allItems, null, 2);
 
-    const L2_SYSTEM_PROMPT = `You are an Operations Director. Create the Daily Ops Digest JSON.
+    const L2_SYSTEM_PROMPT = `You are an Operations Director. 
+    Task: Organize the provided list of operational items into a final JSON report.
     
-    INPUT: A list of summarized issues like: "Issue: ... | Prop: ... | Link: [[URL]]"
+    INPUT: A JSON array of items (summary, property, guest, author, link).
     
-    TASK: Group these issues into 3 categories based on their status.
+    GOAL: Classify each item into one of 3 categories based on its content/status.
     
-    DEFINITIONS:
-    1. **not_attended**: Issues that have been raised but show NO evidence of a reply or action taken yet.
-    2. **follow_up**: Issues that are being worked on, are waiting for a reply, or need monitoring.
-    3. **resolved_issues**: Issues explicitly marked as done, fixed, or closed.
+    CATEGORIES:
+    1. "not_attended": New issues with no recorded action/reply yet.
+    2. "follow_up": Ongoing issues, waiting for reply, or in progress.
+    3. "resolved_issues": Closed, fixed, or done items.
 
-    OUTPUT: Return ONLY a valid JSON object with this structure:
+    OUTPUT: A valid JSON object:
     {
-      "not_attended": [ { "summary": string, "property": string, "guest": string, "author": string, "link": string } ],
-      "follow_up": [ ... ],
-      "resolved_issues": [ ... ]
+      "not_attended": [ ...items ],
+      "follow_up": [ ...items ],
+      "resolved_issues": [ ...items ]
     }
-
-    RULES:
-    - **Link:** Extract the URL strictly from the "[[URL]]" tag in the input. If missing use "#". NEVER invent a URL.
-    - **Summary:** Use professional, executive language.
-    - **Missing Data:** If Property or Guest is not found, use "N/A".
+    
+    IMPORTANT:
+    - Keep the "summary", "property", "guest", "author", "link" fields exactly as provided in the input. Do not alter them unless the summary needs slight polishing for tone.
     `;
 
     try {
@@ -301,29 +324,18 @@ async function generateFinalReport(subSummaries, reportType) {
                 { role: 'system', content: L2_SYSTEM_PROMPT },
                 {
                     role: 'user',
-                    content: `Data to process:\n\n${allSummariesText}`,
+                    content: `Items to classify:\n\n${allItemsString}`,
                 },
             ],
             response_format: { type: 'json_object' },
-            max_tokens: 2500,
+            max_tokens: 3000,
             temperature: 0.1,
         });
 
-        const jsonResponse = JSON.parse(completion.choices[0].message.content);
-        return jsonResponse;
+        return JSON.parse(completion.choices[0].message.content);
     } catch (e) {
         console.error('[GPT_L2] Error generating final report:', e.message);
-        return {
-            not_attended: [],
-            follow_up: [
-                {
-                    summary: 'Error generating report content via AI.',
-                    author: 'System',
-                    link: '#',
-                },
-            ],
-            resolved_issues: [],
-        };
+        return { not_attended: [], follow_up: [], resolved_issues: [] };
     }
 }
 
@@ -393,6 +405,39 @@ function createBatches(messages, durationHours) {
     return batches;
 }
 
+async function processReport(reportType) {
+    console.log(`\n--- [REPORT START] Executing ${reportType} Report ---`);
+    try {
+        const { startTime, endTime } = getReportTimeRange(reportType);
+        const messages = await fetchUnprocessedMessages(startTime, endTime);
+
+        if (messages.length === 0) {
+            return;
+        }
+
+        const subSummaries = await generateSubSummaries(messages);
+        const finalReportData = await generateFinalReport(
+            subSummaries,
+            reportType
+        );
+
+        await publishReport(finalReportData, reportType);
+
+        const textReportForNotion = convertJsonReportToText(finalReportData);
+        await saveReportToNotion(textReportForNotion, reportType);
+
+        // await markMessagesAsProcessed(messages, `report-${reportType}-${Date.now()}`);
+
+        console.log(`[Processor:${reportType}] Finished.`);
+    } catch (error) {
+        console.error(
+            `[Processor:${reportType}] CRITICAL FAILURE:`,
+            error.message
+        );
+    }
+    console.log(`--- [REPORT END] ---\n`);
+}
+
 async function publishReport(reportData, reportType) {
     const blocks = formatJsonToBlocks(reportData, reportType);
 
@@ -425,77 +470,6 @@ async function markMessagesAsProcessed(messages, reportId) {
     } catch (dbError) {
         console.error('[Processor] Failed to mark processed:', dbError.message);
     }
-}
-
-async function processReport(reportType) {
-    console.log(`\n--- [REPORT START] Executing ${reportType} Report ---`);
-    try {
-        const { startTime, endTime } = getReportTimeRange(reportType);
-        const messages = await fetchUnprocessedMessages(startTime, endTime);
-
-        if (messages.length === 0) {
-            const typeLabel =
-                reportType === 'ON_HOURS' ? 'On-Hours' : 'Off-Hours';
-            const emptyMsg = `_No significant activity recorded between ${startTime.toLocaleTimeString()} and ${endTime.toLocaleTimeString()}._`;
-
-            const blocks = [
-                {
-                    type: 'header',
-                    text: {
-                        type: 'plain_text',
-                        text: `📊 Daily Ops Digest - ${typeLabel} (${new Date().toLocaleDateString(
-                            'en-US'
-                        )})`,
-                        emoji: true,
-                    },
-                },
-                { type: 'divider' },
-                {
-                    type: 'section',
-                    text: {
-                        type: 'mrkdwn',
-                        text: emptyMsg,
-                    },
-                },
-            ];
-
-            await slack.chat.postMessage({
-                channel: TARGET_CHANNEL_ID,
-                blocks: blocks,
-                text: `Daily Ops Digest - ${typeLabel}`,
-            });
-
-            await saveReportToNotion(
-                'No significant activity recorded.',
-                reportType
-            );
-
-            console.log(`[Processor:${reportType}] No new messages.`);
-            return;
-        }
-
-        const subSummaries = await generateSubSummaries(messages);
-        const finalReportData = await generateFinalReport(
-            subSummaries,
-            reportType
-        );
-
-        await publishReport(finalReportData, reportType);
-
-        const textReportForNotion = convertJsonReportToText(finalReportData);
-        await saveReportToNotion(textReportForNotion, reportType);
-
-        const reportId = `report-${reportType}-${Date.now()}`;
-        // await markMessagesAsProcessed(messages, reportId);
-
-        console.log(`[Processor:${reportType}] Finished.`);
-    } catch (error) {
-        console.error(
-            `[Processor:${reportType}] CRITICAL FAILURE:`,
-            error.message
-        );
-    }
-    console.log(`--- [REPORT END] ---\n`);
 }
 
 module.exports = {
