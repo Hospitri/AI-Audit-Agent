@@ -426,7 +426,7 @@ async function processReport(reportType) {
         const textReportForNotion = convertJsonReportToText(finalReportData);
         await saveReportToNotion(textReportForNotion, reportType);
 
-        // await markMessagesAsProcessed(messages, `report-${reportType}-${Date.now()}`);
+        await markMessagesAsProcessed(messages, `report-${reportType}-${Date.now()}`);
 
         console.log(`[Processor:${reportType}] Finished.`);
     } catch (error) {
